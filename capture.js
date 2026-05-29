@@ -15,7 +15,7 @@ const puppeteer = require('puppeteer');
 const fs        = require('fs');
 const path      = require('path');
 
-const htmlFile     = process.argv[2] || 'blackbird_terminal.html';
+const htmlFile     = process.argv[2] || 'terminal.html';
 const durationSec  = Number(process.argv[3] || 8);
 const DURATION_MS  = durationSec * 1000;
 

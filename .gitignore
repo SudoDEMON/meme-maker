@@ -1,4 +1,4 @@
-# BlackbirdVideo Tools — sensible gitignore
+# meme-maker — sensible gitignore
 
 # Dependencies
 node_modules/
@@ -22,7 +22,7 @@ clip.mp3
 *.png
 
 # But keep some example inputs
-!blackbird_terminal*.html
+!*_terminal.html
 !test_term.html
 !seki-term.html
 

@@ -9,7 +9,7 @@
     "video": "./video.sh",
     "mememaker": "./mememaker.sh"
   },
-  "description": "meme-maker — yt-dlp + ffmpeg tools for fast YouTube clips and captioned memes. Run any script with -h for usage."
+  "description": "meme-maker — yt-dlp + ffmpeg tools for fast YouTube clips and captioned memes. Run any script with -h for usage.",
   "keywords": [],
   "author": "",
   "license": "ISC",
