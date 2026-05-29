@@ -7,7 +7,7 @@
  * using headless Chromium (via puppeteer).
  *
  * Environment:
- *   BBV_DEBUG=1          More verbose logging
+ *   MM_DEBUG=1           More verbose logging
  *   PUPPETEER_HEADLESS   Set to "false" to watch it render (debugging)
  */
 
@@ -25,7 +25,7 @@ const FPS    = 60;
 const FRAME_DIR = path.join(__dirname, 'frames');
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
-const isDebug = process.env.BBV_DEBUG === '1';
+const isDebug = process.env.MM_DEBUG === '1';
 
 (async () => {
   let browser;

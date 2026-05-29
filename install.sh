@@ -48,12 +48,15 @@ Usage:
   ./install.sh              Interactive install
   ./install.sh --deps-only  Only install system packages
   ./install.sh --link-only  Only create symlinks (skip package install)
+  ./install.sh --doctor     Run diagnostics (check tools, fonts, paths, etc.)
   ./install.sh --help       This message
 
 The installer will:
   • Install yt-dlp, ffmpeg, and good fonts
   • Optionally install Node.js (needed for build.sh / capture.js)
   • Symlink the scripts into ${BIN_DIR} so you can run them from anywhere
+
+Doctor mode checks your environment without making changes.
 EOF
 }
 
@@ -64,16 +67,12 @@ for arg in "$@"; do
     -h|--help) show_help; exit 0 ;;
     --deps-only) MODE="deps" ;;
     --link-only) MODE="link" ;;
+    --doctor) MODE="doctor" ;;
     *) warn "Unknown argument: $arg" ;;
   esac
 done
 
-echo
-echo "${BOLD}meme-maker — Setup${RESET}"
-echo "Repo root: $REPO_ROOT"
-echo
-
-# --- OS / Package manager detection ---
+# --- OS / Package manager detection (always needed, even for doctor) ---
 OS="$(uname -s)"
 PKG_MANAGER=""
 INSTALL_CMD=""
@@ -105,12 +104,26 @@ if [[ "$OS" == "Darwin" ]]; then
   PKG_MANAGER="brew"
   INSTALL_CMD="brew install"
   FONT_PKG=""   # macOS has good fonts built-in
-  info "Detected macOS"
 elif [[ "$OS" == "Linux" ]]; then
   detect_linux
-  info "Detected Linux (package manager: ${PKG_MANAGER:-unknown})"
 else
-  warn "Unknown OS: $OS — you'll need to install dependencies manually"
+  PKG_MANAGER="unknown"
+fi
+
+# Only print the banner for modes that actually do work
+if [[ "$MODE" != "doctor" ]]; then
+  echo
+  echo "${BOLD}meme-maker — Setup${RESET}"
+  echo "Repo root: $REPO_ROOT"
+  echo
+
+  if [[ "$OS" == "Darwin" ]]; then
+    info "Detected macOS"
+  elif [[ "$OS" == "Linux" ]]; then
+    info "Detected Linux (package manager: ${PKG_MANAGER:-unknown})"
+  else
+    warn "Unknown OS: $OS — you'll need to install dependencies manually"
+  fi
 fi
 
 # --- Dependency installation ---
@@ -198,6 +211,109 @@ install_node_deps() {
   fi
 }
 
+# --- Doctor / diagnostics (no changes made) ---
+run_doctor() {
+  echo
+  echo "${BOLD}meme-maker Doctor${RESET}"
+  echo "Repo: $REPO_ROOT"
+  echo "OS: $OS   (PKG_MANAGER=${PKG_MANAGER:-unknown})"
+  echo
+
+  local issues=0
+
+  # --- Core tools ---
+  echo "${BOLD}Core tools:${RESET}"
+  if command -v yt-dlp >/dev/null 2>&1; then
+    local ytv; ytv=$(yt-dlp --version 2>/dev/null | head -1)
+    success "yt-dlp: $ytv"
+  else
+    warn "yt-dlp: MISSING"
+    ((issues++))
+  fi
+
+  if command -v ffmpeg >/dev/null 2>&1; then
+    local ffv; ffv=$(ffmpeg -version 2>/dev/null | head -1 | cut -d' ' -f1-3)
+    success "ffmpeg: $ffv"
+  else
+    warn "ffmpeg: MISSING"
+    ((issues++))
+  fi
+
+  # --- Node (optional but needed for build.sh) ---
+  echo
+  echo "${BOLD}Node.js (for build.sh / capture.js):${RESET}"
+  if command -v node >/dev/null 2>&1; then
+    success "node: $(node --version 2>/dev/null)"
+  else
+    warn "node: MISSING (build.sh will not work)"
+    ((issues++))
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    success "npm:  $(npm --version 2>/dev/null)"
+  else
+    warn "npm:  MISSING (build.sh will not work)"
+    ((issues++))
+  fi
+
+  # --- Font detection (source lib.sh from repo) ---
+  echo
+  echo "${BOLD}Font detection:${RESET}"
+  if [[ -f "$REPO_ROOT/lib.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/lib.sh" 2>/dev/null || true
+
+    if declare -f detect_font >/dev/null 2>&1; then
+      local font_path
+      if font_path=$(detect_font 2>/dev/null); then
+        success "Font found: $font_path"
+      else
+        warn "Font detection failed (see error above)"
+        ((issues++))
+      fi
+    else
+      warn "Could not load detect_font() from lib.sh"
+      ((issues++))
+    fi
+  else
+    warn "lib.sh not found in repo root — cannot test font detection"
+    ((issues++))
+  fi
+
+  # --- Linked commands in PATH ---
+  echo
+  echo "${BOLD}Installed commands (in $BIN_DIR):${RESET}"
+  local cmds=(mememaker video music build meme-simple)
+  local missing_links=0
+  for c in "${cmds[@]}"; do
+    if [[ -L "$BIN_DIR/$c" || -f "$BIN_DIR/$c" ]]; then
+      echo "  ✅ $c → $(readlink "$BIN_DIR/$c" 2>/dev/null || echo "$BIN_DIR/$c")"
+    else
+      echo "  ❌ $c (not linked)"
+      ((missing_links++))
+    fi
+  done
+  if (( missing_links > 0 )); then
+    warn "$missing_links command(s) not linked. Run: ./install.sh --link-only"
+    ((issues++))
+  fi
+
+  # --- Environment & misc ---
+  echo
+  echo "${BOLD}Environment:${RESET}"
+  echo "  MM_DEBUG=${MM_DEBUG:-0}"
+  echo "  FONT=${FONT:-<not set>}"
+  echo "  PATH contains $BIN_DIR: $(if echo "$PATH" | tr ':' '\n' | grep -q "^$BIN_DIR$"; then echo yes; else echo no; fi)"
+
+  # --- Summary ---
+  echo
+  if (( issues == 0 )); then
+    success "All checks passed. You're good to go."
+  else
+    warn "$issues issue(s) found. Fix the items marked above."
+  fi
+  echo
+}
+
 # --- Main flow ---
 case "$MODE" in
   deps)
@@ -205,6 +321,10 @@ case "$MODE" in
     ;;
   link)
     link_scripts
+    ;;
+  doctor)
+    run_doctor
+    exit 0
     ;;
   full)
     install_deps
