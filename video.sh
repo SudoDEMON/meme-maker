@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# video.sh ────────────────────────────────────────────────────────────────────
+# meme-maker — Download a clean, trimmed video clip from YouTube.
+#
+# Usage: npm run video <VIDEO_ID> <start> <end> [output.mp4]
+#        ./video.sh <VIDEO_ID> <start> <end> [output.mp4]
+#
+# Examples:
+#   ./video.sh dQw4w9wgccc 0:42 1:17 funny.mp4
+#   npm run video dQw4w9wgccc 0:42 1:17
+#
+# Environment: BBV_DEBUG=1
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -lt 3 ]]; then
+  cat <<'EOF'
+Usage:
+  ./video.sh <youtube-id> <start> <end> [output.mp4]
+
+Downloads a trimmed clip using yt-dlp + a clean ffmpeg pass.
+Requires: yt-dlp, ffmpeg
+EOF
+  exit 0
+fi
+
+VID="$1"
+START="$2"
+END="$3"
+OUT="${4:-clip.mp4}"
+
+check_deps yt-dlp ffmpeg
+
+info "Grabbing $START → $END from $VID …"
+
+SRC="$(make_temp_file)"
+yt-dlp -f "bv*[ext=mp4]+ba" --merge-output-format mp4 \
+       --download-sections "*$START-$END" \
+       --force-keyframes-at-cuts \
+       -o "$SRC" "https://www.youtube.com/watch?v=$VID"
+
+# Clean pass for reliable timing + decent quality
+ffmpeg -y -i "$SRC" -ss "$START" -to "$END" \
+       -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
+       -c:a aac -b:a 192k -movflags +faststart \
+       "$OUT"
+
+success "Saved $OUT"

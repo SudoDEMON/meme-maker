@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TRAXUS // VOiD//.YETI</title>
+
+<style>
+/* ---------- page ---------- */
+html,body{height:100%;margin:0}
+body{display:flex;align-items:center;justify-content:center;
+     background:#000;font-family:"IBM Plex Mono",monospace;
+     color:#e6e6e6;overflow:hidden}
+
+/* ---------- terminal shell ---------- */
+#terminal{
+  position:relative;background:#111;border-radius:10px;
+  box-shadow:0 0 25px rgba(0,0,0,.9);
+  padding:26px;max-width:960px;width:90%;
+  line-height:1.35;font-size:14px;
+  white-space:pre-wrap;overflow:hidden;
+  /* transform:perspective(900px) rotateX(4deg); */
+  transition:background-color 2s}
+#terminal.orange{background:#b7421c}
+#terminal.fading{animation:bgFade 2s forwards}
+@keyframes bgFade{to{background-color:transparent}}
+
+#terminal::after{
+  content:"";
+  position:absolute;inset:0;
+  /* 4‑pixel cycle: 2px clear, 2px darker */
+  background:repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0)           0px 2px,
+      rgba(0, 0, 0, 0.9)        2px 4px  /* ▲ raise alpha here */
+  );
+  mix-blend-mode:overlay;        /* keeps text bright */
+  pointer-events:none;
+  opacity:0.9;                   /* ▲ overall strength */
+}
+@keyframes flicker{0%,100%{opacity:.98}50%{opacity:.94}}
+#terminal{animation:flicker 3s infinite steps(60)}
+
+/* radiation pulse */
+#radiation{position:absolute;inset:0;z-index:2;
+  background:radial-gradient(circle,
+     rgba(255,255,255,.25)0%,rgba(255,255,255,0)60%);
+  opacity:0;transition:opacity 3s ease-out}
+
+/* cursor */
+.cursor{display:inline-block;width:10px;background:#e6e6e6;margin-left:2px;
+  animation:blink 1s steps(1) infinite}@keyframes blink{50%{opacity:0}}
+
+/* video */
+#easterEgg{position:absolute;inset:0;z-index:0;
+  width:100%;height:100%;object-fit:cover;
+  border-radius:10px;opacity:0;transition:opacity 1s}
+
+/* text layer */
+#content{position:relative;z-index:3}
+
+/* ---------- readability boost ---------- */
+#content, .cursor {
+  text-shadow:
+    0 0 2px   #00ff8044,  /* inner green halo  */
+    0 0 6px   #00ff8022;  /* outer fade        */
+}
+
+#easterEgg { filter: blur(1.5px); }
+</style>
+</head>
+<body>
+
+<div id="terminal">
+  <video id="easterEgg" src="clip.mp4"
+         muted autoplay loop playsinline preload="auto"></video>
+
+  <div id="radiation"></div>
+  <div id="content"></div>
+</div>
+
+<script>
+/* ---------- intro + report text ---------- */
+const INTRO_LINES=[
+  'Initiating Secure Comms: TRX-SEC',
+  'Establishing encrypted channel ░░░░░',
+  'Channel secure.',
+  'Validating AUTH_SIG: fQ$4Xw!8kVzGq@2',
+  '◢◤ [ AUTH_SIG: fQ$4Xw!8kVzGq@2 ] ◢◤',
+  '◢◤ [ ✔ Retrieval validated  |  TRX‑SEC SENTINEL SIGMA‑9 ] ◢◤',
+  'Handshake complete.'
+];
+
+const REPORT_LINES=[
+' █████████████████████████████████████ ',
+' █████████████████████████████████████ ',
+'             ▄███████████▄             ',
+'           ▄████▀█████▀████▄           ',
+'         ▄████▀  █████  ▀████▄         ',
+' ▄▄▄▄▄▄▄████▀    █████    ▀████▄▄▄▄▄▄  ',
+' █████████▀      █████     ▀█████████  ',
+'           TRAXUS // SIG‑OPS           ',
+'            WE BUILD WORLDSᴰ           ',
+'',
+'// ::TRAXUS SIGNAL OBSERVATORY NODE UX‑5533',
+'// ::PAYLOAD SEGMENT TAU‑12 — FINALIZED',
+'// ::DECODING CRYPT‑LATTICE …  <SYNC 99 %>',
+'',
+'+HX8‑ΣΛΞ::SGEN‑A3→TRX#CORE∴SIG Ω‑77',
+'+77ZT‑C63==SEGA1!Z##44BBG‑VE1##PL',
+'+--PXE‑J7K//01170#UF9M‑5KXC=!!ENG',
+'++ΛΞΣ/STACK::SEKIGUCHI_CORE||0x6B7C29||',
+'+==SIG‑SCAN//BOUNDARY::CORRUPTION_LEVEL:██████░░░░ 58 %',
+'+--TRX‑AI ▸ PARSE_MODE = <UUE> ▸ CRC VERIFIED',
+'',
+'// ::FIELD REPORT    >> AGENT VOID//.YETI',
+'// ::OPERATION ID    >> “LOTUS‑714 / GEN‑MIRROR”',
+'// ::EXFIL VECTOR    >> HARBINGER PROBE (PHANTOM ϟ‑BLACK)',
+'// ::TARGET          >> SEKIGUCHI GENETICS Data‑Vault Θ‑314',
+'// ::MISSION STATUS  >>  ✓  GENETIC LEDGERS SECURED',
+'',
+'>  ACTION SUMMARY',
+'   ▸ Sigma‑gate breach via Vent K‑12 (zero alarms).',
+'   ▸ 192 TB of genotype blueprints mirrored.',
+'   ▸ Live chimera hash:  0xE4F9‑Δ7.',
+'   ▸ No outbound bio‑telemetry detected.',
+'',
+'>  CAPITAL IMPACT (PROJ)',
+'   ▸ Ω‑tier genome IP valuation  : ████ 22.4 B Cr',
+'   ▸ Trade surplus (Δ 18 mos)    : █████████ 278 %',
+'',
+'// ::TRX‑AI RECOMMENDATION  [SENTINEL‑SIGMA‑9]',
+'   ▸ Initiate HELIOS FRAME uplift within 6 hrs.',
+'   ▸ Deploy counter‑epigenetic scramble to SEK_Θ‑314.',
+'   ▸ Asset burnback risk: ▓▓▓░░ 14 %.',
+'',
+'// ::FORWARDING   >> TRX‑SEC / OPERATIONS — “SOLSTICE”',
+'// ::AUTH LEVEL   >> 5‑B (PRE‑CLEARED)',
+'// ::ETA WINDOW   >> 01:58:40 and falling …',
+'',
+'◢◤ [ AUTH_SIG: fQ$4Xw!8kVzGq@2 ] ◢◤',
+'◢◤ [ ✔ Retrieval validated  |  TRX‑SEC SENTINEL SIGMA‑9 ] ◢◤',
+'',
+'// ::END‑OF‑LINE EOF…'
+];
+
+/* ---------- element refs ---------- */
+const term=document.getElementById('terminal');
+const content=document.getElementById('content');
+const rad=document.getElementById('radiation');
+const vid=document.getElementById('easterEgg');
+
+/* video readiness */
+let vidReady=false, pending=false;
+vid.addEventListener('canplay',()=>{vidReady=true;if(pending)showVid();});
+function showVid(){vid.style.opacity='1';vid.play();}
+
+/* cursor */
+const cur=document.createElement('span');
+cur.className='cursor';cur.textContent=' ';
+content.appendChild(cur);
+
+/* typewriter */
+let phase='intro', lines=INTRO_LINES, lineIdx=0,charIdx=0;
+const SPEED={intro:25,report:8},STRIDE={intro:1,report:1};
+
+function next(){
+  const speed=SPEED[phase], stride=STRIDE[phase];
+
+  if(lineIdx>=lines.length){
+    if(phase==='intro'){
+      setTimeout(()=>{
+        phase='report';lines=REPORT_LINES;
+        term.classList.add('orange');
+        content.innerHTML='';content.appendChild(cur);
+        lineIdx=charIdx=0;next();
+      },3000);
+    } else {                      // report finished
+      cur.remove();
+      rad.style.opacity = '1';
+      setTimeout(()=> rad.style.opacity = '0', 1800);
+      term.classList.add('fading');
+
+      if (vidReady) showVid(); else pending = true;
+
+      /* → start glitching now that everything's typed */
+      startGlitchLoop();
+    }    return;
+  }
+
+  if(charIdx===0){
+    const div=document.createElement('div');
+    content.insertBefore(div,cur);
+  }
+  const line=lines[lineIdx];
+  for(let i=0;i<stride && charIdx<line.length;i++){
+    content.children[lineIdx].textContent+=line.charAt(charIdx++);
+  }
+  if(charIdx>=line.length){charIdx=0;lineIdx++;}
+  setTimeout(next,speed);
+}
+next();
+
+/* ---- glitch routine ------------------------------------------ */
+function glitchLine () {
+  const rows = [...content.querySelectorAll('div')].filter(r => r.textContent.trim());
+  if (!rows.length) return;
+
+  const row = rows[Math.floor(Math.random() * rows.length)];
+  const txt = row.textContent;
+
+  /* corrupt 30‑50 % of chars */
+  const corruption = 0.30 + Math.random() * 0.20;               // 0.30–0.50
+  const idx = [...Array(txt.length).keys()]
+              .sort(() => 0.5 - Math.random())
+              .slice(0, Math.max(6, Math.floor(txt.length * corruption)));
+
+  const junk = ["▒","█","�","░","Ξ","Δ"];
+  const g = txt.split('');
+  idx.forEach(i => g[i] = junk[Math.floor(Math.random()*junk.length)]);
+  row.textContent = g.join('');
+
+  /* longer, variable flash duration */
+  const flashMs = 200 + Math.random() * 400;                     // 200–600 ms
+  setTimeout(() => { row.textContent = txt; }, flashMs);
+}
+
+/* ---- irregular scheduling ------------------------------------ */
+let glitchTimer=null;
+function scheduleNextGlitch () {
+  const delay = 200 + Math.random() * 800;                       // 0.2–1.0 s
+  glitchTimer = setTimeout(() => {
+    glitchLine();
+    scheduleNextGlitch();
+  }, delay);
+}
+function startGlitchLoop () {
+  if (!glitchTimer) scheduleNextGlitch();
+}
+</script>
+</body>
+</html>

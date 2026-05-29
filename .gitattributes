@@ -1,0 +1,25 @@
+# meme-maker — git attributes
+
+# Auto detect text files and normalize to LF
+* text=auto
+
+# Shell scripts should always use LF
+*.sh text eol=lf
+*.bash text eol=lf
+
+# JS should be LF too
+*.js text eol=lf
+*.json text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# Binary files (explicit)
+*.png binary
+*.jpg binary
+*.gif binary
+*.mp4 binary
+*.mp3 binary
+*.mov binary
+*.ttf binary
+*.otf binary

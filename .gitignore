@@ -1,0 +1,40 @@
+# BlackbirdVideo Tools — sensible gitignore
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Generated / temp
+frames/
+*.tmp
+__*.mp4
+__*.gif
+*.log
+
+# Output artifacts we usually don't want in git
+meme.gif
+meme.mp4
+clip.mp4
+clip.mp3
+*.mp4
+*.mp3
+*.gif
+*.png
+
+# But keep some example inputs
+!blackbird_terminal*.html
+!test_term.html
+!seki-term.html
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# The old standalone meme (keep it if you want, but it's duplicated logic)
+# Memes/mememaker.sh   ← uncomment if you want to ignore it
