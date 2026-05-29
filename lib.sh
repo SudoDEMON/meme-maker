@@ -136,7 +136,7 @@ write_drawtext_file() {
 show_help() {
   local script=${1:-$(basename "$0")}
   cat <<EOF
-${BOLD}${script}${RESET} — BlackbirdVideo tool
+${BOLD}${script}${RESET} — meme-maker tool
 
 Usage and options are documented at the top of the script.
 Run the script with no arguments (or -h/--help) for the full usage example.

@@ -42,7 +42,7 @@ die()   { echo "ERROR: $*" >&2; exit 1; }
 
 show_help() {
   cat <<EOF
-${BOLD}BlackbirdVideo Tools Installer${RESET}
+${BOLD}meme-maker Installer${RESET}
 
 Usage:
   ./install.sh              Interactive install
