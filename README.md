@@ -2,7 +2,7 @@
 
 A small collection of personal yt-dlp + ffmpeg tools for quickly making clips, music stings, and captioned memes from YouTube.
 
-Originally created while making memes for a marathon involving a character named Blackbird. It spiraled from there into a general-purpose clip and meme toolkit.
+Originally created while making memes for a personal project that spiraled into a general-purpose clip and meme toolkit.
 
 Now reasonably robust, portable, and easy to install on new machines, especially Arch-based Linux systems.
 
@@ -13,15 +13,15 @@ Now reasonably robust, portable, and easy to install on new machines, especially
 | `mememaker.sh`  | YouTube slice → captioned GIF or MP4 | Best one. Two-line text support |
 | `video.sh`      | Download clean trimmed video clips   | Fast quality encodes |
 | `music.sh`      | Extract trimmed audio (mp3)          | Great for stings & samples |
-| `build.sh`      | HTML → video/GIF using puppeteer     | For fancy terminal animations |
+| `build.sh`      | HTML → video/GIF using puppeteer     | Advanced: capture browser animations |
 | `lib.sh`        | Shared utilities                     | Used by the main scripts |
 | `Memes/mememaker.sh` | Old-school standalone version   | Self-contained, good for copying |
 
 ## Quick start (recommended)
 
 ```bash
-git clone https://github.com/YOURNAME/blackbird-video.git
-cd blackbird-video
+git clone https://github.com/SudoDEMON/meme-maker.git
+cd meme-maker
 ./install.sh
 ```
 
@@ -68,9 +68,6 @@ video dQw4w9wgccc 0:42 1:17 funny-bit.mp4
 
 # Grab some audio
 music dQw4w9wgccc 1:05 1:22 bass.mp3
-
-# Fancy HTML animation → video (see blackbird_terminal.html)
-build blackbird_terminal.html output.mp4 12 music.mp3
 ```
 
 All scripts support `-h` / `--help`.
@@ -102,7 +99,6 @@ Or just copy the files and run the individual scripts directly.
 ├── package.json
 ├── Memes/
 │   └── mememaker.sh    # Old standalone/self-contained version
-├── blackbird_terminal*.html   # Example inputs for build.sh
 └── README.md
 ```
 
@@ -120,4 +116,4 @@ ISC (same as the original package.json)
 
 ---
 
-Made with too much yt-dlp, stubbornness, and one very persistent bird.
+Made with too much yt-dlp and stubbornness.
