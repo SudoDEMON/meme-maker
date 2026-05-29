@@ -8,7 +8,7 @@
 #   npm run build index.html out.mp4 10 music.mp3
 #
 # Requires: node (with puppeteer), ffmpeg
-# Environment: BBV_DEBUG=1
+# Environment: MM_DEBUG=1
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 

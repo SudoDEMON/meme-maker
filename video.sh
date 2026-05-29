@@ -9,7 +9,7 @@
 #   ./video.sh dQw4w9wgccc 0:42 1:17 funny.mp4
 #   npm run video dQw4w9wgccc 0:42 1:17
 #
-# Environment: BBV_DEBUG=1
+# Environment: MM_DEBUG=1
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 

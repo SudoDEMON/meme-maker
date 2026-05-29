@@ -8,7 +8,7 @@
 # Examples:
 #   ./music.sh dQw4w9wgccc 0:42 1:17 bassline.mp3
 #
-# Environment: BBV_DEBUG=1
+# Environment: MM_DEBUG=1
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 

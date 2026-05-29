@@ -1,17 +1,25 @@
 {
   "name": "meme-maker",
-  "version": "1.0.1",
-  "main": "index.js",
+  "version": "1.0.2",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "./build.sh",
     "music": "./music.sh",
     "video": "./video.sh",
-    "mememaker": "./mememaker.sh"
+    "mememaker": "./mememaker.sh",
+    "doctor": "./install.sh --doctor"
   },
-  "description": "meme-maker — yt-dlp + ffmpeg tools for fast YouTube clips and captioned memes. Run any script with -h for usage.",
-  "keywords": [],
-  "author": "",
+  "description": "yt-dlp + ffmpeg toolkit for fast YouTube clips, music stings, and captioned memes/GIFs. Personal but portable.",
+  "keywords": [
+    "youtube",
+    "ffmpeg",
+    "yt-dlp",
+    "meme",
+    "video",
+    "gif",
+    "caption"
+  ],
+  "author": "SudoDEMON",
   "license": "ISC",
   "dependencies": {
     "puppeteer": "^24.6.1"

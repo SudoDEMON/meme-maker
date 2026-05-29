@@ -4,7 +4,7 @@
 # Turn a YouTube slice into a captioned GIF or MP4 meme.
 #
 # Run with -h or --help for full usage, or see the top of this file.
-# Environment variables: FONT=...  BBV_DEBUG=1
+# Environment variables: FONT=...  MM_DEBUG=1
 # ---------------------------------------------------------------------------
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
