@@ -13,13 +13,17 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -eq 0 ]]; then
   cat <<'EOF'
 Usage:
-  ./mememaker.sh <youtube-id> <start> <end> <gif|mp4> "<top text>" "<bottom text>" [font-path]
+  ./mememaker.sh <youtube-id> <start> <end> <gif|mp4> "<top text>" "<bottom text>" [custom-name] [font-path]
 
 Examples:
   ./mememaker.sh Ee4oHnkXRnM 8:33 8:37 gif "TAKE THAT" "YOU 5 TON BEHEMOTH"
   ./mememaker.sh Ee4oHnkXRnM 8:33 8:37 mp4 "HELLO" "WORLD" /path/to/font.ttf
+  ./mememaker.sh haX-hC7Tfdc 8:22 8:31 gif "RIP" "GRANDMA" "RIPGRANDMAMEME"
 
-7th argument (font) is optional. You can also use the FONT environment variable.
+If a custom-name is given (7th arg), the output will be placed in gifs/ or videos/
+and named <custom-name>.<gif|mp4>. Otherwise the YouTube ID is used as the stem.
+The 8th argument (or 7th if no custom name) can be a font path.
+You can also use the FONT environment variable.
 
 This script requires: yt-dlp, ffmpeg
 EOF
@@ -32,15 +36,44 @@ END="$3"
 TYPE="$4"
 TOP="$5"
 BOT="$6"
-FONT_ARG="${7:-}"
 
-[[ -z "$BOT" ]] && die "Usage: mememaker.sh <id> <start> <end> <gif|mp4> \"top\" \"bottom\" [font]"
+FONT_ARG=""
+CUSTOM_NAME=""
+if [[ $# -ge 7 ]]; then
+  arg7="$7"
+  if [[ -f "$arg7" && "$arg7" =~ \.(ttf|otf|ttc)$ ]]; then
+    FONT_ARG="$arg7"
+  else
+    CUSTOM_NAME="$arg7"
+  fi
+fi
+if [[ $# -ge 8 ]]; then
+  FONT_ARG="$8"
+fi
+
+[[ -z "$BOT" ]] && die "Usage: mememaker.sh <id> <start> <end> <gif|mp4> \"top\" \"bottom\" [custom-name] [font]"
 
 [[ "$TYPE" != "gif" && "$TYPE" != "mp4" ]] && die "TYPE must be 'gif' or 'mp4'"
 
 check_deps yt-dlp ffmpeg
 
-OUT="meme.$TYPE"
+# Determine output directory and filename based on type.
+# Default stem is the YouTube ID; custom name (if provided) overrides the stem.
+# Output is always placed in a type-specific subdirectory.
+if [[ "$TYPE" == "gif" ]]; then
+  OUT_DIR="gifs"
+else
+  OUT_DIR="videos"
+fi
+mkdir -p "$OUT_DIR"
+
+if [[ -n "$CUSTOM_NAME" ]]; then
+  STEM="$(basename "$CUSTOM_NAME")"
+  STEM="${STEM%.*}"
+else
+  STEM="$ID"
+fi
+OUT="${OUT_DIR}/${STEM}.${TYPE}"
 
 WIDTH=720
 FPS=15

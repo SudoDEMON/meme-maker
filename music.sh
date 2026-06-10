@@ -18,6 +18,7 @@ Usage:
   ./music.sh <youtube-id> <start> <end> [output.mp3]
 
 Extracts audio using yt-dlp + ffmpeg for reliable trimming.
+If no output is given, defaults to audio/<id>.mp3 (creates the dir).
 Requires: yt-dlp, ffmpeg
 EOF
   exit 0
@@ -26,7 +27,15 @@ fi
 VID="$1"
 START="$2"
 END="$3"
-OUT="${4:-clip.mp3}"
+
+if [[ -z "${4:-}" ]]; then
+  mkdir -p audio
+  OUT="audio/${VID}.mp3"
+else
+  OUT="$4"
+  d="$(dirname "$OUT")"
+  [[ "$d" != "." ]] && mkdir -p "$d"
+fi
 
 check_deps yt-dlp ffmpeg
 

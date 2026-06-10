@@ -60,22 +60,29 @@ brew install yt-dlp ffmpeg node
 ## Usage examples
 
 ```bash
-# Make a meme
+# Make a meme (outputs to gifs/<id>.gif by default)
 mememaker Ee4oHnkXRnM 8:33 8:37 gif "TAKE THAT" "YOU 5 TON BEHEMOTH"
 
-# Grab a video clip
+# Make a meme with a custom name (still placed in the right dir + correct ext)
+mememaker haX-hC7Tfdc 8:22 8:31 gif "RIP" "GRANDMA" "RIPGRANDMAMEME"
+
+# Grab a video clip (defaults to videos/<id>.mp4 if no output given)
 video dQw4w9wgccc 0:42 1:17 funny-bit.mp4
 
-# Grab some audio
+# Grab some audio (defaults to audio/<id>.mp3 if no output given)
 music dQw4w9wgccc 1:05 1:22 bass.mp3
 ```
+
+- `mememaker` will create `gifs/` or `videos/` as needed and name the file after the video ID (or your custom stem) + the right extension.
+- `video` and `music` do the same with `videos/` and `audio/`.
+- Passing an explicit output filename (as the last argument) gives you full control over path and name.
 
 All scripts support `-h` / `--help`.
 
 ## Environment variables
 
 - `FONT=/path/to/font.ttf` — force a specific font in `mememaker`
-- `BBV_DEBUG=1` — extra debug output
+- `MM_DEBUG=1` — extra debug output
 
 ## Moving to a new machine
 

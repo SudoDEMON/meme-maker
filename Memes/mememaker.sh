@@ -55,11 +55,12 @@ yt-dlp -f "bv*[ext=mp4]+ba" --merge-output-format mp4 \
 # The file from yt-dlp --download-sections is already the trimmed slice (timeline ~0).
 ffmpeg -y -i "$TMP" -c copy "$CLEAN"
 
+mkdir -p gifs
 ffmpeg -i "$CLEAN" -vf \
  "drawtext=fontfile=$FONT: \
            text='$CAPTION':fontcolor=white:borderw=2:bordercolor=black: \
            fontsize=38:x=(w-text_w)/2:y=h-80, \
   fps=15,scale=640:-1" \
- -loop 0 meme.gif
+ -loop 0 "gifs/${ID}.gif"
 
-echo "✅  Created meme.gif"
+echo "✅  Created gifs/${ID}.gif"

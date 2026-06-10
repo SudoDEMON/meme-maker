@@ -19,6 +19,7 @@ Usage:
   ./video.sh <youtube-id> <start> <end> [output.mp4]
 
 Downloads a trimmed clip using yt-dlp + a clean ffmpeg pass.
+If no output is given, defaults to videos/<id>.mp4 (creates the dir).
 Requires: yt-dlp, ffmpeg
 EOF
   exit 0
@@ -27,7 +28,15 @@ fi
 VID="$1"
 START="$2"
 END="$3"
-OUT="${4:-clip.mp4}"
+
+if [[ -z "${4:-}" ]]; then
+  mkdir -p videos
+  OUT="videos/${VID}.mp4"
+else
+  OUT="$4"
+  d="$(dirname "$OUT")"
+  [[ "$d" != "." ]] && mkdir -p "$d"
+fi
 
 check_deps yt-dlp ffmpeg
 
