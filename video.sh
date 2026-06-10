@@ -58,6 +58,7 @@ fi
 # Clean re-encode of the already-sectioned clip (yt-dlp already extracted
 # the requested range; the resulting file is short with timeline ~0).
 ffmpeg -y -i "$SRC" \
+       -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
        -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
        -c:a aac -b:a 192k -movflags +faststart \
        "$OUT"

@@ -84,6 +84,10 @@ STROKE=3     # outline thickness
 TOP_Y=15      # smaller = higher on screen (raised top text)
 BOTTOM_Y=75   # subtracted from h; smaller value = larger y = lower on screen (lowered bottom text)
 
+# Final scale. -2 on the height ensures the result is divisible by 2
+# (required by libx264 when using -pix_fmt yuv420p).
+SCALE="scale=$WIDTH:-2:flags=lanczos"
+
 # Get a good font (respects 7th arg + FONT env + auto-detect)
 FONT="$(detect_font "$FONT_ARG")"
 info "Using font: $FONT"
@@ -116,6 +120,7 @@ fi
 # past the end of the clip and produce an empty file.)
 info "Preparing clean clip for captioning…"
 ffmpeg -y -i "$CLIP_SRC" \
+       -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
        -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
        -c:a aac -b:a 192k \
        "$CLIP_CLEAN"
@@ -130,16 +135,16 @@ DT="drawtext=fontfile=$FONT:textfile=$TOP_TXT:fontcolor=white:borderw=$STROKE:bo
 # ---------- 4) branch: GIF or MP4 ------------------------------------------
 if [[ "$TYPE" == "gif" ]]; then
   info "Generating palette…"
-  ffmpeg -y -i "$CLIP_CLEAN" -vf "fps=$FPS,scale=$WIDTH:-1:flags=lanczos,$DT,palettegen" palette.png
+  ffmpeg -y -i "$CLIP_CLEAN" -vf "fps=$FPS,$SCALE,$DT,palettegen" palette.png
 
   info "Creating GIF…"
   ffmpeg -y -i "$CLIP_CLEAN" -i palette.png -lavfi \
-         "fps=$FPS,scale=$WIDTH:-1:flags=lanczos,$DT,paletteuse=dither=floyd_steinberg" \
+         "fps=$FPS,$SCALE,$DT,paletteuse=dither=floyd_steinberg" \
          -loop 0 "$OUT"
   rm -f palette.png
 else
   info "Creating MP4…"
-  ffmpeg -y -i "$CLIP_CLEAN" -vf "scale=$WIDTH:-1:flags=lanczos,$DT" \
+  ffmpeg -y -i "$CLIP_CLEAN" -vf "$SCALE,$DT" \
          -c:v libx264 -crf 23 -preset slow -movflags +faststart \
          -pix_fmt yuv420p "$OUT"
 fi
