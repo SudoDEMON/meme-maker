@@ -32,11 +32,17 @@ check_deps yt-dlp ffmpeg
 
 info "Extracting audio $START → $END from $VID …"
 
-SRC="$(make_temp_file)"
+SRC="$(make_temp_file --ext mp3)"
 yt-dlp -x --audio-format mp3 --audio-quality 0 \
        --download-sections "*$START-$END" \
        --force-keyframes-at-cuts \
        -o "$SRC" "https://www.youtube.com/watch?v=$VID"
+
+# yt-dlp can occasionally write a sibling with the ext appended; pick the real file if needed.
+if [[ ! -s "$SRC" && -s "$SRC.mp3" ]]; then
+  SRC="$SRC.mp3"
+fi
+[[ -s "$SRC" ]] || die "yt-dlp produced no usable audio for $VID ($START-$END). Try a different video or run with MM_DEBUG=1."
 
 # Clean ffmpeg pass for precise timing
 ffmpeg -y -i "$SRC" -ss "$START" -to "$END" \

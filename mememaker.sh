@@ -52,7 +52,7 @@ FONT="$(detect_font "$FONT_ARG")"
 info "Using font: $FONT"
 
 # Safe temp files (auto-cleaned on exit or Ctrl-C)
-CLIP_SRC="$(make_temp_file)"
+CLIP_SRC="$(make_temp_file --ext mp4)"
 CLIP_CLEAN="$(make_temp_file)"
 TOP_TXT="$(write_drawtext_file "$TOP")"
 BOT_TXT="$(write_drawtext_file "$BOT")"
@@ -63,6 +63,12 @@ yt-dlp -f "bv*[ext=mp4]+ba" --merge-output-format mp4 \
        --download-sections "*$START-$END" \
        --force-keyframes-at-cuts \
        -o "$CLIP_SRC" "https://youtu.be/$ID"
+
+# yt-dlp can occasionally write a sibling with the ext appended; pick the real file if needed.
+if [[ ! -s "$CLIP_SRC" && -s "$CLIP_SRC.mp4" ]]; then
+  CLIP_SRC="$CLIP_SRC.mp4"
+fi
+[[ -s "$CLIP_SRC" ]] || die "yt-dlp produced no usable media for $ID ($START-$END). Try a different video or run with MM_DEBUG=1."
 
 # ---------- 2) Clean trim + prepare (more reliable than postprocessor hacks)
 info "Preparing clean clip for captioning…"

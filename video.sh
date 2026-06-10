@@ -33,11 +33,17 @@ check_deps yt-dlp ffmpeg
 
 info "Grabbing $START → $END from $VID …"
 
-SRC="$(make_temp_file)"
+SRC="$(make_temp_file --ext mp4)"
 yt-dlp -f "bv*[ext=mp4]+ba" --merge-output-format mp4 \
        --download-sections "*$START-$END" \
        --force-keyframes-at-cuts \
        -o "$SRC" "https://www.youtube.com/watch?v=$VID"
+
+# yt-dlp can occasionally write a sibling with the ext appended; pick the real file if needed.
+if [[ ! -s "$SRC" && -s "$SRC.mp4" ]]; then
+  SRC="$SRC.mp4"
+fi
+[[ -s "$SRC" ]] || die "yt-dlp produced no usable media for $VID ($START-$END). Try a different video or run with MM_DEBUG=1."
 
 # Clean pass for reliable timing + decent quality
 ffmpeg -y -i "$SRC" -ss "$START" -to "$END" \

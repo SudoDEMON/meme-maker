@@ -42,6 +42,10 @@ yt-dlp -f "bv*[ext=mp4]+ba" --merge-output-format mp4 \
        --force-keyframes-at-cuts \
        -o "$TMP" "https://youtu.be/$ID"
 
+# yt-dlp with -o may still append the container ext in some cases; pick the real file
+[[ -f "$TMP" ]] || TMP="${TMP}.mp4"
+[[ -f "$TMP" ]] || TMP="${TMP%.mp4}.mp4"
+
 ffmpeg -y -i "$TMP" -ss "$START" -to "$END" -c copy "$CLEAN"
 
 ffmpeg -i "$CLEAN" -vf \

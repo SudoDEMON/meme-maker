@@ -56,11 +56,18 @@ declare -a MM_TEMP_PATHS=()
 
 _make_temp() {
   local kind=$1; shift
+  local ext=""
+  if [[ "${1:-}" == "--ext" ]]; then
+    local e="$2"
+    [[ "$e" == .* ]] || e=".$e"
+    ext="$e"
+    shift 2
+  fi
   local tmp
   if [[ $kind == "dir" ]]; then
-    tmp=$(mktemp -d "${TMPDIR:-/tmp}/mm.XXXXXX")
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/mm.XXXXXX${ext}")
   else
-    tmp=$(mktemp "${TMPDIR:-/tmp}/mm.XXXXXX")
+    tmp=$(mktemp "${TMPDIR:-/tmp}/mm.XXXXXX${ext}")
   fi
   MM_TEMP_PATHS+=("$tmp")
   printf '%s\n' "$tmp"
