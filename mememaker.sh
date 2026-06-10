@@ -52,7 +52,9 @@ FONT="$(detect_font "$FONT_ARG")"
 info "Using font: $FONT"
 
 # Safe temp files (auto-cleaned on exit or Ctrl-C)
-CLIP_SRC="$(make_temp_file --ext mp4)"
+# Use make_temp_name for the yt-dlp target so we don't pre-create an empty file.
+# yt-dlp has "already downloaded" logic that can skip if a 0-byte placeholder exists.
+CLIP_SRC="$(make_temp_name --ext mp4)"
 CLIP_CLEAN="$(make_temp_file)"
 TOP_TXT="$(write_drawtext_file "$TOP")"
 BOT_TXT="$(write_drawtext_file "$BOT")"
@@ -62,6 +64,7 @@ info "Downloading section $START → $END from $ID …"
 yt-dlp -f "bv*[ext=mp4]+ba" --merge-output-format mp4 \
        --download-sections "*$START-$END" \
        --force-keyframes-at-cuts \
+       --force-overwrites \
        -o "$CLIP_SRC" "https://youtu.be/$ID"
 
 # yt-dlp can occasionally write a sibling with the ext appended; pick the real file if needed.

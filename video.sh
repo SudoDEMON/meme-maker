@@ -33,10 +33,11 @@ check_deps yt-dlp ffmpeg
 
 info "Grabbing $START → $END from $VID …"
 
-SRC="$(make_temp_file --ext mp4)"
+SRC="$(make_temp_name --ext mp4)"
 yt-dlp -f "bv*[ext=mp4]+ba" --merge-output-format mp4 \
        --download-sections "*$START-$END" \
        --force-keyframes-at-cuts \
+       --force-overwrites \
        -o "$SRC" "https://www.youtube.com/watch?v=$VID"
 
 # yt-dlp can occasionally write a sibling with the ext appended; pick the real file if needed.

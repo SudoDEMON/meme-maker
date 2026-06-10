@@ -32,10 +32,11 @@ check_deps yt-dlp ffmpeg
 
 info "Extracting audio $START → $END from $VID …"
 
-SRC="$(make_temp_file --ext mp3)"
+SRC="$(make_temp_name --ext mp3)"
 yt-dlp -x --audio-format mp3 --audio-quality 0 \
        --download-sections "*$START-$END" \
        --force-keyframes-at-cuts \
+       --force-overwrites \
        -o "$SRC" "https://www.youtube.com/watch?v=$VID"
 
 # yt-dlp can occasionally write a sibling with the ext appended; pick the real file if needed.

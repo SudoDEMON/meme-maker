@@ -76,6 +76,18 @@ _make_temp() {
 make_temp_file() { _make_temp file "$@"; }
 make_temp_dir()  { _make_temp dir  "$@"; }
 
+# Like make_temp_file, but immediately removes the empty placeholder file
+# that mktemp creates. The *name* is still registered for automatic cleanup.
+# Use this for paths you will pass to yt-dlp (or similar tools that have
+# "file already exists / has already been downloaded" detection and may
+# refuse to overwrite a 0-byte file we pre-created).
+make_temp_name() {
+  local p
+  p=$(make_temp_file "$@")
+  rm -f "$p" 2>/dev/null || true
+  printf '%s\n' "$p"
+}
+
 cleanup() {
   local p
   for p in "${MM_TEMP_PATHS[@]:-}"; do
