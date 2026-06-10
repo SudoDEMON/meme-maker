@@ -54,7 +54,7 @@ elif [[ "$ext" == "png" ]]; then
 
 else
   # MP4 path
-  TMP="$(make_temp_file)"
+  TMP="$(make_temp_file --ext mp4)"
   info "Encoding MP4…"
   ffmpeg -y -framerate 15 -i frames/%05d.png \
          -c:v libx264 -pix_fmt yuv420p -crf 18 -preset slow \

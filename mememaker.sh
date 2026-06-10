@@ -55,7 +55,7 @@ info "Using font: $FONT"
 # Use make_temp_name for the yt-dlp target so we don't pre-create an empty file.
 # yt-dlp has "already downloaded" logic that can skip if a 0-byte placeholder exists.
 CLIP_SRC="$(make_temp_name --ext mp4)"
-CLIP_CLEAN="$(make_temp_file)"
+CLIP_CLEAN="$(make_temp_file --ext mp4)"
 TOP_TXT="$(write_drawtext_file "$TOP")"
 BOT_TXT="$(write_drawtext_file "$BOT")"
 
