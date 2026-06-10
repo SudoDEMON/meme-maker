@@ -80,6 +80,10 @@ FPS=15
 SIZE=50
 STROKE=3     # outline thickness
 
+# Text positioning (tweak these to raise/lower captions)
+TOP_Y=15      # smaller = higher on screen (raised top text)
+BOTTOM_Y=75   # subtracted from h; smaller value = larger y = lower on screen (lowered bottom text)
+
 # Get a good font (respects 7th arg + FONT env + auto-detect)
 FONT="$(detect_font "$FONT_ARG")"
 info "Using font: $FONT"
@@ -120,8 +124,8 @@ ffmpeg -y -i "$CLIP_SRC" \
 
 # ---------- 3) Build drawtext filters using textfile (arbitrary text safe) --
 # This completely avoids the nightmare of escaping colons, commas, quotes etc.
-DT="drawtext=fontfile=$FONT:textfile=$TOP_TXT:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$SIZE:x=(w-text_w)/2:y=40,
-    drawtext=fontfile=$FONT:textfile=$BOT_TXT:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$SIZE:x=(w-text_w)/2:y=h-$SIZE*1.8"
+DT="drawtext=fontfile=$FONT:textfile=$TOP_TXT:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$SIZE:x=(w-text_w)/2:y=$TOP_Y,
+    drawtext=fontfile=$FONT:textfile=$BOT_TXT:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$SIZE:x=(w-text_w)/2:y=h-$BOTTOM_Y"
 
 # ---------- 4) branch: GIF or MP4 ------------------------------------------
 if [[ "$TYPE" == "gif" ]]; then
