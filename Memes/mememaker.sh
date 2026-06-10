@@ -60,7 +60,7 @@ ffmpeg -i "$CLEAN" -vf \
  "drawtext=fontfile=$FONT: \
            text='$CAPTION':fontcolor=white:borderw=2:bordercolor=black: \
            fontsize=38:x=(w-text_w)/2:y=h-60, \
-  fps=15,scale=640:-1" \
+  fps=15,scale=640:-2" \
  -loop 0 "gifs/${ID}.gif"
 
 echo "✅  Created gifs/${ID}.gif"
