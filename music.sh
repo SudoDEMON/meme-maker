@@ -45,8 +45,9 @@ if [[ ! -s "$SRC" && -s "$SRC.mp3" ]]; then
 fi
 [[ -s "$SRC" ]] || die "yt-dlp produced no usable audio for $VID ($START-$END). Try a different video or run with MM_DEBUG=1."
 
-# Clean ffmpeg pass for precise timing
-ffmpeg -y -i "$SRC" -ss "$START" -to "$END" \
+# Clean re-encode of the already-sectioned clip (yt-dlp already extracted
+# the requested range; the resulting file is short with timeline ~0).
+ffmpeg -y -i "$SRC" \
        -c:a libmp3lame -q:a 0 \
        "$OUT"
 

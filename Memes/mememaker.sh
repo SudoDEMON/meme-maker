@@ -52,7 +52,8 @@ yt-dlp -f "bv*[ext=mp4]+ba" --merge-output-format mp4 \
 [[ -s "$TMP" ]] || TMP="${TMP%.mp4}.mp4"
 [[ -s "$TMP" ]] || { echo "yt-dlp produced no usable media for $ID ($START-$END)"; exit 1; }
 
-ffmpeg -y -i "$TMP" -ss "$START" -to "$END" -c copy "$CLEAN"
+# The file from yt-dlp --download-sections is already the trimmed slice (timeline ~0).
+ffmpeg -y -i "$TMP" -c copy "$CLEAN"
 
 ffmpeg -i "$CLEAN" -vf \
  "drawtext=fontfile=$FONT: \

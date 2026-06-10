@@ -73,12 +73,17 @@ if [[ ! -s "$CLIP_SRC" && -s "$CLIP_SRC.mp4" ]]; then
 fi
 [[ -s "$CLIP_SRC" ]] || die "yt-dlp produced no usable media for $ID ($START-$END). Try a different video or run with MM_DEBUG=1."
 
-# ---------- 2) Clean trim + prepare (more reliable than postprocessor hacks)
+# ---------- 2) Clean re-encode of the already-sectioned clip
+# (yt-dlp --download-sections already extracted the time range into a short file
+# whose timeline starts near 0; re-applying the original $START/$END would seek
+# past the end of the clip and produce an empty file.)
 info "Preparing clean clip for captioning…"
-ffmpeg -y -i "$CLIP_SRC" -ss "$START" -to "$END" \
+ffmpeg -y -i "$CLIP_SRC" \
        -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
        -c:a aac -b:a 192k \
        "$CLIP_CLEAN"
+
+[[ -s "$CLIP_CLEAN" ]] || die "Clean prepare pass produced an empty file for $ID ($START-$END)."
 
 # ---------- 3) Build drawtext filters using textfile (arbitrary text safe) --
 # This completely avoids the nightmare of escaping colons, commas, quotes etc.
