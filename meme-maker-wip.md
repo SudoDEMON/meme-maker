@@ -1,67 +1,42 @@
 # Meme Maker WIP
 
-Progress file for UI cleanup work. Update this file as items move from planned
+Meme Maker WIP changes from user. Update this file as items move from planned
 to implemented to verified.
 
-## Current Pass: UI Cleanup
+## Current Pass
 
 Status: Verified
 Started: 2026-06-21
 Last updated: 2026-06-21
 
-### Checklist
-
-- [x] Rename `Download Convert` to `Download or Convert`.
+## HTML Title
+- [x] Change from `meme-maker` to `Meme Maker`.
   - Status: Verified.
-  - Evidence: Puppeteer check confirmed nav tabs include `Download or Convert` and no `Download Convert`; screenshot `/tmp/mm-ui-cleanup.png`.
+  - Evidence: Puppeteer check confirmed `document.title` is `Meme Maker`.
 
-- [x] End placeholders on pages with source probing should show the detected end time of the supported media instead of `blank = full video`.
-  - Example: a video with duration 12:11 should show `12:11`.
+## Start End Validation
+- [x] Ensure start time is before end time.
   - Status: Verified.
-  - Evidence: Puppeteer check loaded a 1-second local MP4 through source probing and confirmed the End placeholder changed to `0:01`.
-
-- [x] Replace the generic `Current Page Name` eyebrow with the actual page name, and remove the duplicate large current page title so the header is a single line.
+  - Evidence: API check rejected `start=20` with `end=0:10`; Puppeteer check also showed the client-side `Start time must be before end time.` error.
+- [x] When End time is queried, set it as current text instead of default.
   - Status: Verified.
-  - Evidence: Puppeteer check confirmed `#toolKicker` changes to the active page name and no `h1` current-page title remains.
-
-- [x] Collapse doubled `Settings` labels into a single Settings title.
+  - Evidence: Puppeteer source probe on a generated 2-second MP4 set the End input value to `0:02`.
+- [x] Make sure start and end times are actual times or supported formats (actual time vs seconds).
   - Status: Verified.
-  - Evidence: Puppeteer check confirmed `.form-panel` has no duplicate `.eyebrow`; screenshot `/tmp/mm-ui-cleanup.png`.
+  - Evidence: API and Puppeteer checks rejected invalid `start=bogus`/`start=bad`; accepted supported seconds and `MM:SS` formats during source-probe/run checks.
 
-- [x] Collapse doubled `Terminal Window` labels into a single Terminal Window title.
+## Experimental Wishlist
+- [x] Allow you to scrub GIF/video.
   - Status: Verified.
-  - Evidence: Puppeteer check confirmed `.job-panel` has no duplicate `.eyebrow`; screenshot `/tmp/mm-ui-cleanup.png`.
+  - Evidence: Experimental tab now has a scrub slider; Puppeteer check confirmed it initialized with `max=2` for a 2-second MP4 and loading the slider at `1` updated the preview/status to `0:01`.
 
-- [x] Change source placeholder text to `Supported URL or Local Media`.
-  - Status: Verified.
-  - Evidence: Puppeteer check confirmed the source placeholder text exactly matches `Supported URL or Local Media`.
-
-- [x] Move `[X]` and `> Run` controls into the Terminal Window area.
-  - Add a `Reset` button where those controls currently are.
-  - Reset should clear input fields and reset the active form to defaults.
-  - Status: Verified.
-  - Evidence: Puppeteer check confirmed Run/Cancel are inside `.job-panel`, Reset is inside `.form-panel`, and Reset clears source/output values while restoring the End placeholder to `End time`.
-
-- [x] Font path placeholder should show the detected default font.
-  - Text format: `Default Font Detected: fontName`.
-  - Status: Verified.
-  - Evidence: `/api/health` returned `defaultFont.name` and Puppeteer confirmed the Font Path placeholder was `Default Font Detected: DejaVuSans-Bold` on this machine.
-
-- [x] Input audio placeholder should list supported audio media types.
-  - Text format starts with: `Supports MP3, WAV, ...`
-  - Status: Verified.
-  - Evidence: Puppeteer check confirmed the Input audio placeholder starts with `Supports MP3, WAV,`.
-
-### Validation
+## Validation
 
 - `npm test` passed.
 - `npm run doctor` passed.
 - `node --check web.js && node --check web/app.js` passed.
 - `bash -n convert.sh audio_video.sh mememaker.sh video.sh music.sh lib.sh install.sh test.sh` passed.
 - `git diff --check` passed.
-- Browser verification screenshot: `/tmp/mm-ui-cleanup.png`.
-
-## Notes
-
-- Keep `HTML Animation` and `Experimental` behavior intact.
-- Preserve the local-only server posture unless explicitly changing hosting.
+- Direct API validation checks passed for invalid format and start-after-end.
+- Puppeteer UI verification passed for title, End auto-fill, client-side validation, and Experimental scrub.
+- Browser verification screenshot: `/tmp/mm-wip-scrub.png`.

@@ -88,9 +88,12 @@ let activeTool = tools[0];
 let activeJobId = null;
 let eventSource = null;
 let sourceProbeTimer = null;
+let previewScrubTimer = null;
 const editorState = {
   naturalWidth: 0,
   naturalHeight: 0,
+  duration: 0,
+  previewSource: '',
   dragging: null
 };
 const maxLogChars = 80000;
@@ -162,6 +165,61 @@ function normalizeSourceInput(value) {
   }
 
   return raw;
+}
+
+function parseTimeValue(value, { allowBlank = false, allowInf = false, label = 'Time' } = {}) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    if (allowBlank) return null;
+    throw new Error(`${label} is required.`);
+  }
+  if (allowInf && raw.toLowerCase() === 'inf') return Infinity;
+  if (!/^[0-9]+(?::[0-9]+){0,2}(?:\.[0-9]+)?$/.test(raw)) {
+    throw new Error(`${label} must be seconds, MM:SS, HH:MM:SS, or ${allowInf ? 'inf' : 'a valid time'}.`);
+  }
+  const parts = raw.split(':');
+  const seconds = Number(parts[parts.length - 1]);
+  if (!Number.isFinite(seconds) || seconds < 0) throw new Error(`${label} must be a valid time.`);
+  if (parts.length > 1 && seconds >= 60) {
+    throw new Error(`${label} seconds must be less than 60 when using colon format.`);
+  }
+  let total = seconds;
+  if (parts.length >= 2) {
+    const minutes = Number(parts[parts.length - 2]);
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes >= 60) {
+      throw new Error(`${label} minutes must be a whole number less than 60 when using colon format.`);
+    }
+    total += minutes * 60;
+  }
+  if (parts.length === 3) {
+    const hours = Number(parts[0]);
+    if (!Number.isInteger(hours) || hours < 0) throw new Error(`${label} hours must be a non-negative whole number.`);
+    total += hours * 3600;
+  }
+  return total;
+}
+
+function validateTimeRange() {
+  const startInput = toolForm.querySelector('[name="start"]');
+  const endInput = toolForm.querySelector('[name="end"]');
+  if (!startInput && !endInput) return;
+  const start = parseTimeValue(startInput?.value || '0:00', { label: 'Start time' });
+  const end = parseTimeValue(endInput?.value || '', { allowBlank: true, allowInf: true, label: 'End time' });
+  if (end !== null && end !== Infinity && start >= end) {
+    throw new Error('Start time must be before end time.');
+  }
+}
+
+function formatTimeLabel(seconds) {
+  const value = Math.max(0, Number(seconds) || 0);
+  const total = Math.floor(value);
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  const frac = value - total;
+  const secLabel = frac > 0 ? (secs + frac).toFixed(1).padStart(4, '0') : String(secs).padStart(2, '0');
+  if (hrs > 0) return `${hrs}:${String(mins).padStart(2, '0')}:${secLabel}`;
+  return `${mins}:${secLabel}`;
 }
 
 function renderField(field) {
@@ -280,6 +338,10 @@ function renderExperimentalEditor() {
           <button class="secondary-button" type="button" id="previewButton">Load Frame</button>
         </div>
         <div class="field full">
+          <label for="previewTime">Scrub preview frame <span id="previewTimeLabel">0:00</span></label>
+          <input id="previewTime" type="range" min="0" max="0" step="0.1" value="0" disabled>
+        </div>
+        <div class="field full">
           <label for="fontPath">Font path</label>
           <div class="file-field">
             <input id="fontPath" name="fontPath" type="text" placeholder="${escapeHtml(defaultFontPlaceholder())}" data-editor-font-path>
@@ -315,6 +377,8 @@ function renderTool(tool) {
   if (tool.experimental) {
     editorState.naturalWidth = 0;
     editorState.naturalHeight = 0;
+    editorState.duration = 0;
+    editorState.previewSource = '';
     editorState.dragging = null;
     toolForm.innerHTML = renderExperimentalEditor();
     syncExperimentalEditor();
@@ -524,16 +588,57 @@ function initializeExperimentalPositions() {
   applyExperimentalStyles();
 }
 
+function experimentalPreviewTime() {
+  const slider = toolForm.querySelector('#previewTime');
+  return Math.max(0, Number(slider?.value || 0));
+}
+
+function setExperimentalScrub(duration) {
+  const slider = toolForm.querySelector('#previewTime');
+  const label = toolForm.querySelector('#previewTimeLabel');
+  const value = Math.max(0, Number(duration) || 0);
+  editorState.duration = value;
+  if (!slider) return;
+  slider.max = value > 0 ? String(value) : '0';
+  slider.value = '0';
+  slider.disabled = value <= 0;
+  if (label) label.textContent = '0:00';
+}
+
+function refreshExperimentalScrubLabel() {
+  const label = toolForm.querySelector('#previewTimeLabel');
+  if (label) label.textContent = formatTimeLabel(experimentalPreviewTime());
+}
+
+async function loadExperimentalSourceInfo(input) {
+  const response = await fetch('/api/source-info', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: input })
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.error || 'Could not inspect preview input.');
+  }
+  setExperimentalScrub(body.duration || 0);
+  return body;
+}
+
 async function loadExperimentalPreview() {
   if (activeTool.id !== 'experimental-gif-editor') return;
   const input = experimentalField('input')?.value.trim();
   if (!input) return;
+  if (editorState.previewSource !== input) {
+    await loadExperimentalSourceInfo(input);
+    editorState.previewSource = input;
+  }
+  const time = experimentalPreviewTime();
 
   setUploadStatus('input', 'Loading preview...', 'busy');
   const response = await fetch('/api/preview-frame', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ input })
+    body: JSON.stringify({ input, time: String(time) })
   });
   const body = await response.json();
   if (!response.ok) {
@@ -555,7 +660,9 @@ async function loadExperimentalPreview() {
   canvas.classList.add('has-preview');
   canvas.style.aspectRatio = `${editorState.naturalWidth} / ${editorState.naturalHeight}`;
   initializeExperimentalPositions();
-  setUploadStatus('input', `Preview ${editorState.naturalWidth}x${editorState.naturalHeight}`, 'ready');
+  refreshExperimentalScrubLabel();
+  const scrub = editorState.duration ? ` at ${formatTimeLabel(time)} / ${formatTimeLabel(editorState.duration)}` : '';
+  setUploadStatus('input', `Preview ${editorState.naturalWidth}x${editorState.naturalHeight}${scrub}`, 'ready');
 }
 
 function beginExperimentalDrag(event) {
@@ -602,6 +709,7 @@ function formFields() {
   for (const input of toolForm.querySelectorAll('[data-source-probe]')) {
     input.value = normalizeSourceInput(input.value);
   }
+  validateTimeRange();
 
   const data = new FormData(toolForm);
   const fields = {};
@@ -618,10 +726,13 @@ function setUploadStatus(fieldName, message, state = '') {
   status.dataset.state = state;
 }
 
-function setEndPlaceholder(label) {
+function setEndValue(label) {
   const end = toolForm.querySelector('[name="end"]');
   if (!end) return;
-  end.placeholder = label || 'End time';
+  if (label) {
+    end.value = label;
+  }
+  end.placeholder = 'End time';
 }
 
 function applyRuntimePlaceholders() {
@@ -674,7 +785,7 @@ async function probeSource(input) {
   }
 
   setUploadStatus(fieldName, sourceStatusMessage(body), 'ready');
-  setEndPlaceholder(body.durationLabel || '');
+  setEndValue(body.durationLabel || '');
   const output = outputNameField();
   if (output && !output.value.trim() && body.defaultStem) {
     output.value = body.defaultStem;
@@ -858,6 +969,22 @@ toolForm.addEventListener('change', event => {
 toolForm.addEventListener('input', event => {
   if (event.target.matches('[data-source-probe]')) {
     queueSourceProbe(event.target);
+  }
+
+  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[name="input"]')) {
+    editorState.previewSource = '';
+    setExperimentalScrub(0);
+  }
+
+  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('#previewTime')) {
+    refreshExperimentalScrubLabel();
+    clearTimeout(previewScrubTimer);
+    previewScrubTimer = setTimeout(() => {
+      loadExperimentalPreview().catch(err => {
+        setUploadStatus('input', err.message, 'error');
+        appendLog(`${err.message}\n`);
+      });
+    }, 250);
   }
 
   if (activeTool.id !== 'experimental-gif-editor') return;

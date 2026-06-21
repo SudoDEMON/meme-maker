@@ -58,8 +58,10 @@ You can paste a YouTube ID, YouTube URL, or another media URL supported by the
 installed `yt-dlp`. YouTube URLs are normalized to the 11-character ID. Source
 fields can also Browse for local files. When a source is entered, the server
 probes it with `ffprobe` for local files or `yt-dlp --dump-single-json` for
-remote URLs to show support/duration and prefill the output name from the media
-ID/name.
+remote URLs to show support/duration, fill the End field with the detected
+duration, and prefill the output name from the media ID/name. Start and End
+fields are validated as seconds, `MM:SS`, or `HH:MM:SS`, and Start must be
+before End when End is set.
 Finished jobs show both an Open link and a Download link. The Download link uses
 a browser attachment response so it should trigger the normal save/download
 flow with the generated filename.
@@ -79,12 +81,12 @@ Local file pickers upload the selected file into `.web-uploads/` and then use
 that uploaded local path for GIF/video/audio/font/HTML inputs. This keeps the
 browser security model intact while still giving a normal file chooser.
 
-The **Experimental** tab includes a visual media text editor. It loads the first
-frame of a selected GIF, MP4, or WebM, lets you drag two text fields into place,
-and can render the result as GIF, MP4, or WebM. It passes the resulting x/y
-coordinates plus font face, bold, italic, and size settings to the local caption
-renderer. If you browse or enter a repo-local font path, the preview text loads
-that font file in the browser before rendering.
+The **Experimental** tab includes a visual media text editor. It loads a preview
+frame from a selected GIF, MP4, or WebM, lets you scrub through the media, drag
+two text fields into place, and render the result as GIF, MP4, or WebM. It
+passes the resulting x/y coordinates plus font face, bold, italic, and size
+settings to the local caption renderer. If you browse or enter a repo-local font
+path, the preview text loads that font file in the browser before rendering.
 
 ```bash
 MM_WEB_PORT=3001 npm run web
