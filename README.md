@@ -48,7 +48,7 @@ The web UI runs the same local scripts as the CLI and streams `yt-dlp` / `ffmpeg
 logs in the browser. By default it binds to `127.0.0.1` for local-only use.
 The main web tabs are:
 
-- **Download Convert**: local media or yt-dlp-supported URL → GIF/MP3/MP4/WebM
+- **Download or Convert**: local media or yt-dlp-supported URL → GIF/MP3/MP4/WebM
 - **Text to Media**: local media or yt-dlp-supported URL → captioned GIF/MP4/WebM
 - **Audio to Video**: local media or yt-dlp-supported URL + local audio → MP4/WebM
 - **Build HTML Animation**

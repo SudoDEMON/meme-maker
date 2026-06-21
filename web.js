@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const REPO_ROOT = __dirname;
 const WEB_ROOT = path.join(REPO_ROOT, 'web');
@@ -17,6 +17,7 @@ const MAX_UPLOAD_BYTES = Number(process.env.MM_WEB_MAX_UPLOAD_BYTES || 500 * 102
 const SOURCE_INFO_TIMEOUT_MS = Number(process.env.MM_WEB_SOURCE_INFO_TIMEOUT_MS || 15000);
 
 const jobs = new Map();
+let defaultFontCache = null;
 
 const MIME = {
   '.css': 'text/css; charset=utf-8',
@@ -38,6 +39,10 @@ function clean(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function basenameNoExt(value) {
+  return path.basename(clean(value)).replace(/\.[^.]+$/, '');
+}
+
 function required(fields, name, label = name) {
   const value = clean(fields[name]);
   if (!value) {
@@ -56,6 +61,47 @@ function optionalInteger(fields, name, label = name, fallback = '') {
     throw new Error(`${label} must be a non-negative integer.`);
   }
   return value;
+}
+
+function detectDefaultFont() {
+  if (defaultFontCache) return defaultFontCache;
+
+  const fallback = { name: 'system font', path: '' };
+  const candidates = [
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf',
+    '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+    '/usr/share/fonts/TTF/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/noto/NotoSans-Bold.ttf',
+    '/usr/share/fonts/TTF/LiberationSans-Bold.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/System/Library/Fonts/SFNS.ttf',
+    '/System/Library/Fonts/HelveticaNeue.ttc',
+    '/System/Library/Fonts/Helvetica.ttc',
+    '/Library/Fonts/Arial Unicode.ttf',
+    '/System/Library/Fonts/Supplemental/Arial Bold.ttf'
+  ];
+  const found = candidates.find(candidate => fs.existsSync(candidate));
+  if (found) {
+    defaultFontCache = { name: basenameNoExt(found), path: found };
+    return defaultFontCache;
+  }
+
+  const fc = spawnSync('fc-match', ['-f', '%{family}\n%{file}\n', 'sans-serif:weight=bold'], {
+    encoding: 'utf8',
+    timeout: 3000
+  });
+  if (!fc.error && fc.status === 0) {
+    const lines = fc.stdout.split('\n').map(line => clean(line)).filter(Boolean);
+    if (lines.length > 0) {
+      const name = lines[0].split(',')[0] || lines[0];
+      defaultFontCache = { name, path: lines[1] || '' };
+      return defaultFontCache;
+    }
+  }
+
+  defaultFontCache = fallback;
+  return defaultFontCache;
 }
 
 function safeStem(value, fallback = 'clip') {
@@ -1038,6 +1084,7 @@ async function handleRequest(req, res) {
       ok: true,
       repoRoot: REPO_ROOT,
       localOnly: HOST === '127.0.0.1' || HOST === 'localhost',
+      defaultFont: detectDefaultFont(),
       actions: [
         'download-convert',
         'text-to-media',

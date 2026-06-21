@@ -3,11 +3,11 @@
 const tools = [
   {
     id: 'download-convert',
-    title: 'Download Convert',
+    title: 'Download or Convert',
     fields: [
-      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'YouTube ID, supported URL, or local media', accept: '.gif,.mp4,.webm,.mp3,.wav,.m4a,.aac,.ogg,image/gif,video/mp4,video/webm,audio/*', sourceProbe: true },
+      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mp4,.webm,.mp3,.wav,.m4a,.aac,.ogg,image/gif,video/mp4,video/webm,audio/*', sourceProbe: true },
       { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
-      { name: 'end', label: 'End', span: 'quarter', placeholder: 'blank = full video' },
+      { name: 'end', label: 'End', span: 'quarter', placeholder: 'End time' },
       { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['gif', 'GIF'], ['mp3', 'MP3'], ['webm', 'WebM']] },
       { name: 'output', label: 'Output name', span: 'full', placeholder: 'defaults to media ID/name' }
     ]
@@ -16,9 +16,9 @@ const tools = [
     id: 'text-to-media',
     title: 'Text to Media',
     fields: [
-      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'YouTube ID, supported URL, or local GIF/MP4/WebM', accept: '.gif,.mp4,.webm,image/gif,video/mp4,video/webm', sourceProbe: true },
+      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mp4,.webm,image/gif,video/mp4,video/webm', sourceProbe: true },
       { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
-      { name: 'end', label: 'End', span: 'quarter', placeholder: 'blank = full video' },
+      { name: 'end', label: 'End', span: 'quarter', placeholder: 'End time' },
       { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['gif', 'GIF'], ['mp4', 'MP4'], ['webm', 'WebM']] },
       { name: 'outputName', label: 'Output name', span: 'full', placeholder: 'defaults to media ID/name' },
       { name: 'topText', label: 'Top text', type: 'textarea', span: 'field', placeholder: 'BOOM' },
@@ -32,18 +32,18 @@ const tools = [
       { name: 'topY', label: 'Top y', type: 'number', span: 'quarter', value: '15', min: '0' },
       { name: 'bottomY', label: 'Bottom offset', type: 'number', span: 'quarter', value: '75', min: '0' },
       { name: 'width', label: 'Width', type: 'number', span: 'quarter', value: '720', min: '1' },
-      { name: 'fontPath', label: 'Font path', span: 'full', placeholder: 'Auto-detect if blank', accept: '.ttf,.otf,.ttc,font/*' }
+      { name: 'fontPath', label: 'Font path', span: 'full', placeholder: 'Default Font Detected: detecting...', accept: '.ttf,.otf,.ttc,font/*' }
     ]
   },
   {
     id: 'audio-to-video',
     title: 'Audio to Video',
     fields: [
-      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'YouTube ID, supported URL, or local GIF/MP4/WebM', accept: '.gif,.mp4,.webm,image/gif,video/mp4,video/webm', sourceProbe: true },
+      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mp4,.webm,image/gif,video/mp4,video/webm', sourceProbe: true },
       { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
-      { name: 'end', label: 'End', span: 'quarter', placeholder: 'blank = full video' },
+      { name: 'end', label: 'End', span: 'quarter', placeholder: 'End time' },
       { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['webm', 'WebM']] },
-      { name: 'audio', label: 'Input audio', required: true, span: 'full', placeholder: 'Audio/sting.mp3', accept: '.mp3,.wav,.m4a,.aac,.ogg,audio/*' },
+      { name: 'audio', label: 'Input audio', required: true, span: 'full', placeholder: 'Supports MP3, WAV, M4A, AAC, OGG, and other FFmpeg-supported audio', accept: '.mp3,.wav,.m4a,.aac,.ogg,audio/*' },
       { name: 'output', label: 'Output name', span: 'full', placeholder: 'defaults to media ID/name' }
     ]
   },
@@ -55,7 +55,7 @@ const tools = [
       { name: 'format', label: 'Format', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF'], ['png', 'PNG']] },
       { name: 'output', label: 'Output', span: 'full', placeholder: 'render' },
       { name: 'seconds', label: 'Seconds', type: 'number', required: true, span: 'quarter', value: '5', min: '0.1', step: '0.1' },
-      { name: 'audio', label: 'Audio file', span: 'full', placeholder: 'Audio/sting.mp3', accept: '.mp3,.wav,.m4a,.aac,.ogg,audio/*' }
+      { name: 'audio', label: 'Audio file', span: 'full', placeholder: 'Supports MP3, WAV, M4A, AAC, OGG, and other FFmpeg-supported audio', accept: '.mp3,.wav,.m4a,.aac,.ogg,audio/*' }
     ]
   },
   {
@@ -65,12 +65,18 @@ const tools = [
   }
 ];
 
+const audioPlaceholder = 'Supports MP3, WAV, M4A, AAC, OGG, and other FFmpeg-supported audio';
+const appDefaults = {
+  defaultFontName: '',
+  defaultFontPath: ''
+};
+
 const toolTabs = document.querySelector('#toolTabs');
-const toolTitle = document.querySelector('#toolTitle');
 const toolKicker = document.querySelector('#toolKicker');
 const toolForm = document.querySelector('#toolForm');
 const runButton = document.querySelector('#runButton');
 const cancelButton = document.querySelector('#cancelButton');
+const resetButton = document.querySelector('#resetButton');
 const jobStatus = document.querySelector('#jobStatus');
 const jobLog = document.querySelector('#jobLog');
 const outputLink = document.querySelector('#outputLink');
@@ -102,6 +108,12 @@ function fieldClass(field) {
   if (field.span === 'third') return 'field third';
   if (field.span === 'quarter') return 'field quarter';
   return 'field';
+}
+
+function defaultFontPlaceholder() {
+  return appDefaults.defaultFontName
+    ? `Default Font Detected: ${appDefaults.defaultFontName}`
+    : 'Default Font Detected: detecting...';
 }
 
 function normalizeYouTubeInput(value) {
@@ -155,7 +167,10 @@ function normalizeSourceInput(value) {
 function renderField(field) {
   const required = field.required ? ' required' : '';
   const value = field.value ? ` value="${escapeHtml(field.value)}"` : '';
-  const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : '';
+  const placeholderText = field.name === 'fontPath'
+    ? defaultFontPlaceholder()
+    : (field.name === 'audio' ? audioPlaceholder : field.placeholder);
+  const placeholder = placeholderText ? ` placeholder="${escapeHtml(placeholderText)}"` : '';
   const min = field.min ? ` min="${escapeHtml(field.min)}"` : '';
   const step = field.step ? ` step="${escapeHtml(field.step)}"` : '';
   const youtube = field.youtube ? ' data-youtube="true"' : '';
@@ -267,7 +282,7 @@ function renderExperimentalEditor() {
         <div class="field full">
           <label for="fontPath">Font path</label>
           <div class="file-field">
-            <input id="fontPath" name="fontPath" type="text" placeholder="Auto-resolve if blank" data-editor-font-path>
+            <input id="fontPath" name="fontPath" type="text" placeholder="${escapeHtml(defaultFontPlaceholder())}" data-editor-font-path>
             <label class="file-button">
               Browse
               <input type="file" data-upload-for="fontPath" accept=".ttf,.otf,.ttc,font/*">
@@ -296,8 +311,7 @@ function renderExperimentalEditor() {
 
 function renderTool(tool) {
   activeTool = tool;
-  toolTitle.textContent = tool.title;
-  toolKicker.textContent = 'Current Page Name';
+  toolKicker.textContent = tool.title;
   if (tool.experimental) {
     editorState.naturalWidth = 0;
     editorState.naturalHeight = 0;
@@ -307,6 +321,7 @@ function renderTool(tool) {
   } else {
     toolForm.innerHTML = `<div class="field-grid">${tool.fields.map(renderField).join('')}</div>`;
   }
+  applyRuntimePlaceholders();
   renderTabs();
 }
 
@@ -326,6 +341,7 @@ function appendLog(text) {
 function setRunning(isRunning) {
   runButton.disabled = isRunning;
   cancelButton.disabled = !isRunning || !activeJobId;
+  resetButton.disabled = isRunning;
 }
 
 function showOutput(fileUrl, outputPath, downloadUrl) {
@@ -602,6 +618,27 @@ function setUploadStatus(fieldName, message, state = '') {
   status.dataset.state = state;
 }
 
+function setEndPlaceholder(label) {
+  const end = toolForm.querySelector('[name="end"]');
+  if (!end) return;
+  end.placeholder = label || 'End time';
+}
+
+function applyRuntimePlaceholders() {
+  for (const input of toolForm.querySelectorAll('[name="fontPath"]')) {
+    input.placeholder = defaultFontPlaceholder();
+  }
+  for (const input of toolForm.querySelectorAll('[name="audio"]')) {
+    input.placeholder = audioPlaceholder;
+  }
+}
+
+function resetActiveForm() {
+  const tool = activeTool;
+  clearTimeout(sourceProbeTimer);
+  renderTool(tool);
+}
+
 function outputNameField() {
   return toolForm.querySelector('[name="output"], [name="outputName"]');
 }
@@ -637,6 +674,7 @@ async function probeSource(input) {
   }
 
   setUploadStatus(fieldName, sourceStatusMessage(body), 'ready');
+  setEndPlaceholder(body.durationLabel || '');
   const output = outputNameField();
   if (output && !output.value.trim() && body.defaultStem) {
     output.value = body.defaultStem;
@@ -748,6 +786,11 @@ async function checkHealth() {
     const data = await response.json();
     statusDot.classList.add('ready');
     serverStatus.textContent = data.localOnly ? 'Local server ready' : 'Server ready';
+    if (data.defaultFont && data.defaultFont.name) {
+      appDefaults.defaultFontName = data.defaultFont.name;
+      appDefaults.defaultFontPath = data.defaultFont.path || '';
+      applyRuntimePlaceholders();
+    }
   } catch {
     statusDot.classList.remove('ready');
     serverStatus.textContent = 'Server unavailable';
@@ -861,6 +904,8 @@ toolForm.addEventListener('submit', event => {
 cancelButton.addEventListener('click', () => {
   cancelJob().catch(err => appendLog(`${err.message}\n`));
 });
+
+resetButton.addEventListener('click', resetActiveForm);
 
 renderTool(activeTool);
 checkHealth();
