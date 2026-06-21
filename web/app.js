@@ -509,7 +509,9 @@ function beginExperimentalDrag(event) {
     offsetX: event.clientX - overlayRect.left,
     offsetY: event.clientY - overlayRect.top
   };
-  overlay.setPointerCapture(event.pointerId);
+  if (typeof overlay.setPointerCapture === 'function' && event.pointerId !== undefined) {
+    overlay.setPointerCapture(event.pointerId);
+  }
   event.preventDefault();
 }
 
@@ -714,9 +716,12 @@ toolForm.addEventListener('click', event => {
 });
 
 toolForm.addEventListener('pointerdown', beginExperimentalDrag);
-toolForm.addEventListener('pointermove', moveExperimentalDrag);
-toolForm.addEventListener('pointerup', endExperimentalDrag);
-toolForm.addEventListener('pointercancel', endExperimentalDrag);
+document.addEventListener('pointermove', moveExperimentalDrag);
+document.addEventListener('pointerup', endExperimentalDrag);
+document.addEventListener('pointercancel', endExperimentalDrag);
+toolForm.addEventListener('mousedown', beginExperimentalDrag);
+document.addEventListener('mousemove', moveExperimentalDrag);
+document.addEventListener('mouseup', endExperimentalDrag);
 
 toolForm.addEventListener('submit', event => {
   event.preventDefault();
