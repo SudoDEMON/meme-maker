@@ -89,11 +89,15 @@ let activeJobId = null;
 let eventSource = null;
 let sourceProbeTimer = null;
 let previewScrubTimer = null;
+let previewInputTimer = null;
 const editorState = {
   naturalWidth: 0,
   naturalHeight: 0,
   duration: 0,
+  fps: 0,
+  frameCount: 0,
   previewSource: '',
+  positionsInitialized: false,
   dragging: null
 };
 const maxLogChars = 80000;
@@ -222,6 +226,12 @@ function formatTimeLabel(seconds) {
   return `${mins}:${secLabel}`;
 }
 
+function formatNumber(value, digits = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '';
+  return number.toFixed(digits).replace(/\.?0+$/, '');
+}
+
 function renderField(field) {
   const required = field.required ? ' required' : '';
   const value = field.value ? ` value="${escapeHtml(field.value)}"` : '';
@@ -282,12 +292,12 @@ function renderExperimentalEditor() {
     <div class="experimental-editor">
       <div class="field-grid">
         <div class="field full">
-          <label for="input">Input media</label>
+          <label for="input">Input: GIF / WebM / MP4</label>
           <div class="file-field">
-            <input id="input" name="input" type="text" placeholder="gifs/input.gif or videos/input.mp4" required>
+            <input id="input" name="input" type="text" placeholder="gifs/input.gif, videos/input.webm, or videos/input.mp4" required>
             <label class="file-button">
               Browse
-              <input type="file" data-upload-for="input" accept=".gif,.mp4,.webm,image/gif,video/mp4,video/webm">
+              <input type="file" data-upload-for="input" accept=".gif,.webm,.mp4,image/gif,video/webm,video/mp4">
             </label>
           </div>
           <div class="field-status" data-upload-status-for="input"></div>
@@ -303,6 +313,10 @@ function renderExperimentalEditor() {
             <option value="mp4">MP4</option>
             <option value="webm">WebM</option>
           </select>
+        </div>
+        <div class="field quarter">
+          <label for="outputFps">Output FPS</label>
+          <input id="outputFps" name="outputFps" type="number" min="0.1" step="0.1" placeholder="auto">
         </div>
         <div class="field">
           <label for="topText">Text 1</label>
@@ -326,19 +340,29 @@ function renderExperimentalEditor() {
           <label for="fontSize">Size</label>
           <input id="fontSize" name="fontSize" type="number" min="1" value="50" data-editor-style>
         </div>
-        <div class="field quarter">
+        <div class="field">
           <label>Style</label>
           <div class="toggle-row">
             <label class="toggle-pill"><input type="checkbox" name="bold" value="1" checked data-editor-style> Bold</label>
             <label class="toggle-pill"><input type="checkbox" name="italic" value="1" data-editor-style> Italic</label>
+            <label class="toggle-pill"><input type="checkbox" name="underline" value="1" data-editor-style> Underline</label>
+            <label class="toggle-pill"><input type="checkbox" name="strike" value="1" data-editor-style> Strike</label>
           </div>
         </div>
         <div class="field quarter">
-          <label for="previewButton">Preview</label>
-          <button class="secondary-button" type="button" id="previewButton">Load Frame</button>
+          <label for="previewTimeInput">Current time</label>
+          <input id="previewTimeInput" type="text" value="0:00" inputmode="decimal" disabled>
+        </div>
+        <div class="field quarter">
+          <label for="previewFrameInput">Current frame</label>
+          <input id="previewFrameInput" type="number" min="0" step="1" value="0" disabled>
+        </div>
+        <div class="field">
+          <label>Total media</label>
+          <div class="readonly-field" id="previewTotalLabel">0:00 / 0 frames</div>
         </div>
         <div class="field full">
-          <label for="previewTime">Scrub preview frame <span id="previewTimeLabel">0:00</span></label>
+          <label for="previewTime">Scrub preview frame <span id="previewTimeLabel">Current: 0:00 / 0 Total: 0:00 / 0</span></label>
           <input id="previewTime" type="range" min="0" max="0" step="0.1" value="0" disabled>
         </div>
         <div class="field full">
@@ -375,10 +399,15 @@ function renderTool(tool) {
   activeTool = tool;
   toolKicker.textContent = tool.title;
   if (tool.experimental) {
+    clearTimeout(previewInputTimer);
+    clearTimeout(previewScrubTimer);
     editorState.naturalWidth = 0;
     editorState.naturalHeight = 0;
     editorState.duration = 0;
+    editorState.fps = 0;
+    editorState.frameCount = 0;
     editorState.previewSource = '';
+    editorState.positionsInitialized = false;
     editorState.dragging = null;
     toolForm.innerHTML = renderExperimentalEditor();
     syncExperimentalEditor();
@@ -543,6 +572,9 @@ function applyExperimentalStyles() {
   const displaySize = Math.max(8, Math.round(size * scale.x));
   const isBold = Boolean(experimentalField('bold')?.checked);
   const isItalic = Boolean(experimentalField('italic')?.checked);
+  const decorations = [];
+  if (experimentalField('underline')?.checked) decorations.push('underline');
+  if (experimentalField('strike')?.checked) decorations.push('line-through');
   const customFont = ensureExperimentalFontFace(experimentalFontUrl());
   const fallbackFont = cssFontFamily(family);
   const previewFont = customFont ? `${customFont}, ${fallbackFont}` : fallbackFont;
@@ -552,6 +584,7 @@ function applyExperimentalStyles() {
     overlay.style.fontSize = `${displaySize}px`;
     overlay.style.fontWeight = isBold ? '900' : '500';
     overlay.style.fontStyle = isItalic ? 'italic' : 'normal';
+    overlay.style.textDecoration = decorations.join(' ');
   }
 }
 
@@ -593,21 +626,132 @@ function experimentalPreviewTime() {
   return Math.max(0, Number(slider?.value || 0));
 }
 
-function setExperimentalScrub(duration) {
+function previewMaxFrame() {
+  return Math.max(0, Math.floor(Number(editorState.frameCount) || 0) - 1);
+}
+
+function frameFromTime(seconds) {
+  const fps = Number(editorState.fps) || 0;
+  if (fps <= 0) return 0;
+  return Math.min(previewMaxFrame(), Math.max(0, Math.round((Number(seconds) || 0) * fps)));
+}
+
+function timeFromFrame(frame) {
+  const fps = Number(editorState.fps) || 0;
+  if (fps <= 0) return 0;
+  return Math.max(0, (Number(frame) || 0) / fps);
+}
+
+function clampPreviewTime(seconds) {
+  const value = Math.max(0, Number(seconds) || 0);
+  return editorState.duration > 0 ? Math.min(editorState.duration, value) : value;
+}
+
+function experimentalMetadataSummary() {
+  const pieces = [];
+  if (editorState.naturalWidth && editorState.naturalHeight) {
+    pieces.push(`Resolution ${editorState.naturalWidth}x${editorState.naturalHeight}`);
+  }
+  if (editorState.duration) pieces.push(`Total ${formatTimeLabel(editorState.duration)}`);
+  if (editorState.fps) pieces.push(`FPS ${formatNumber(editorState.fps)}`);
+  if (editorState.frameCount) pieces.push(`Frames ${editorState.frameCount}`);
+  return pieces.join(' • ');
+}
+
+function setExperimentalMediaStatus(prefix = '', state = 'ready') {
+  const summary = experimentalMetadataSummary();
+  setUploadStatus('input', [prefix, summary].filter(Boolean).join(' • '), state);
+}
+
+function syncExperimentalPreviewControls(seconds) {
   const slider = toolForm.querySelector('#previewTime');
   const label = toolForm.querySelector('#previewTimeLabel');
-  const value = Math.max(0, Number(duration) || 0);
+  const timeInput = toolForm.querySelector('#previewTimeInput');
+  const frameInput = toolForm.querySelector('#previewFrameInput');
+  const totalLabel = toolForm.querySelector('#previewTotalLabel');
+  const value = clampPreviewTime(seconds);
+  const frame = frameFromTime(value);
+  const totalTime = editorState.duration ? formatTimeLabel(editorState.duration) : '0:00';
+  const totalFrames = editorState.frameCount || 0;
+  const enabled = editorState.duration > 0;
+
+  if (slider) slider.value = String(value);
+  if (timeInput) {
+    timeInput.value = formatTimeLabel(value);
+    timeInput.disabled = !enabled;
+  }
+  if (frameInput) {
+    frameInput.value = String(frame);
+    frameInput.max = String(previewMaxFrame());
+    frameInput.disabled = !enabled || !editorState.fps;
+  }
+  if (totalLabel) totalLabel.textContent = `${totalTime}/${totalFrames} frames`;
+  if (label) label.textContent = `Current: ${formatTimeLabel(value)}/${frame} Total: ${totalTime}/${totalFrames}`;
+}
+
+function setExperimentalPreviewTime(seconds, { load = true } = {}) {
+  syncExperimentalPreviewControls(seconds);
+  if (load) queueExperimentalPreview();
+}
+
+function setExperimentalPreviewFrame(frame, { load = true } = {}) {
+  const maxFrame = previewMaxFrame();
+  const value = Math.min(maxFrame, Math.max(0, Math.round(Number(frame) || 0)));
+  setExperimentalPreviewTime(timeFromFrame(value), { load });
+}
+
+function setExperimentalScrub(info) {
+  const slider = toolForm.querySelector('#previewTime');
+  const source = info && typeof info === 'object' ? info : { duration: info };
+  const value = Math.max(0, Number(source.duration) || 0);
+  const fps = Math.max(0, Number(source.fps) || 0);
+  const givenFrames = Math.max(0, Math.floor(Number(source.frameCount) || 0));
+  const estimatedFrames = value > 0 && fps > 0 ? Math.max(1, Math.round(value * fps)) : 0;
   editorState.duration = value;
+  editorState.fps = fps;
+  editorState.frameCount = givenFrames || estimatedFrames;
+  if (source.width && source.height) {
+    editorState.naturalWidth = Number(source.width) || editorState.naturalWidth;
+    editorState.naturalHeight = Number(source.height) || editorState.naturalHeight;
+  }
   if (!slider) return;
   slider.max = value > 0 ? String(value) : '0';
+  slider.step = fps > 0 ? (formatNumber(1 / fps, 4) || '0.001') : '0.1';
   slider.value = '0';
   slider.disabled = value <= 0;
-  if (label) label.textContent = '0:00';
+  syncExperimentalPreviewControls(0);
 }
 
 function refreshExperimentalScrubLabel() {
-  const label = toolForm.querySelector('#previewTimeLabel');
-  if (label) label.textContent = formatTimeLabel(experimentalPreviewTime());
+  syncExperimentalPreviewControls(experimentalPreviewTime());
+}
+
+function queueExperimentalPreview(delay = 250) {
+  clearTimeout(previewInputTimer);
+  previewInputTimer = setTimeout(() => {
+    loadExperimentalPreview().catch(err => {
+      setUploadStatus('input', err.message, 'error');
+      appendLog(`${err.message}\n`);
+    });
+  }, delay);
+}
+
+function applyExperimentalTimeInput() {
+  const input = toolForm.querySelector('#previewTimeInput');
+  if (!input || input.disabled) return;
+  try {
+    const seconds = parseTimeValue(input.value, { label: 'Preview time' });
+    setExperimentalPreviewTime(seconds);
+  } catch (err) {
+    setUploadStatus('input', err.message, 'error');
+    syncExperimentalPreviewControls(experimentalPreviewTime());
+  }
+}
+
+function applyExperimentalFrameInput() {
+  const input = toolForm.querySelector('#previewFrameInput');
+  if (!input || input.disabled) return;
+  setExperimentalPreviewFrame(input.value);
 }
 
 async function loadExperimentalSourceInfo(input) {
@@ -620,7 +764,8 @@ async function loadExperimentalSourceInfo(input) {
   if (!response.ok) {
     throw new Error(body.error || 'Could not inspect preview input.');
   }
-  setExperimentalScrub(body.duration || 0);
+  setExperimentalScrub(body);
+  setExperimentalMediaStatus('', 'ready');
   return body;
 }
 
@@ -631,6 +776,7 @@ async function loadExperimentalPreview() {
   if (editorState.previewSource !== input) {
     await loadExperimentalSourceInfo(input);
     editorState.previewSource = input;
+    editorState.positionsInitialized = false;
   }
   const time = experimentalPreviewTime();
 
@@ -659,10 +805,15 @@ async function loadExperimentalPreview() {
   if (placeholder) placeholder.hidden = true;
   canvas.classList.add('has-preview');
   canvas.style.aspectRatio = `${editorState.naturalWidth} / ${editorState.naturalHeight}`;
-  initializeExperimentalPositions();
-  refreshExperimentalScrubLabel();
-  const scrub = editorState.duration ? ` at ${formatTimeLabel(time)} / ${formatTimeLabel(editorState.duration)}` : '';
-  setUploadStatus('input', `Preview ${editorState.naturalWidth}x${editorState.naturalHeight}${scrub}`, 'ready');
+  if (!editorState.positionsInitialized) {
+    initializeExperimentalPositions();
+    editorState.positionsInitialized = true;
+  } else {
+    applyExperimentalStyles();
+    refreshExperimentalPositions();
+  }
+  syncExperimentalPreviewControls(time);
+  setExperimentalMediaStatus(`Preview at ${formatTimeLabel(time)} / frame ${frameFromTime(time)}`, 'ready');
 }
 
 function beginExperimentalDrag(event) {
@@ -937,6 +1088,15 @@ toolForm.addEventListener('blur', event => {
 }, true);
 
 toolForm.addEventListener('change', event => {
+  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('#previewTimeInput')) {
+    applyExperimentalTimeInput();
+    return;
+  }
+  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('#previewFrameInput')) {
+    applyExperimentalFrameInput();
+    return;
+  }
+
   const picker = event.target.closest('[data-upload-for]');
   if (!picker || !picker.files || picker.files.length === 0) {
     if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[data-editor-style]')) {
@@ -973,18 +1133,17 @@ toolForm.addEventListener('input', event => {
 
   if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[name="input"]')) {
     editorState.previewSource = '';
+    editorState.positionsInitialized = false;
+    editorState.naturalWidth = 0;
+    editorState.naturalHeight = 0;
     setExperimentalScrub(0);
+    if (event.target.value.trim()) queueExperimentalPreview(700);
   }
 
   if (activeTool.id === 'experimental-gif-editor' && event.target.matches('#previewTime')) {
-    refreshExperimentalScrubLabel();
     clearTimeout(previewScrubTimer);
-    previewScrubTimer = setTimeout(() => {
-      loadExperimentalPreview().catch(err => {
-        setUploadStatus('input', err.message, 'error');
-        appendLog(`${err.message}\n`);
-      });
-    }, 250);
+    syncExperimentalPreviewControls(event.target.value);
+    previewScrubTimer = setTimeout(() => setExperimentalPreviewTime(event.target.value), 250);
   }
 
   if (activeTool.id !== 'experimental-gif-editor') return;
@@ -1002,12 +1161,15 @@ toolForm.addEventListener('input', event => {
   }
 });
 
-toolForm.addEventListener('click', event => {
-  if (activeTool.id === 'experimental-gif-editor' && event.target.closest('#previewButton')) {
-    loadExperimentalPreview().catch(err => {
-      setUploadStatus('input', err.message, 'error');
-      appendLog(`${err.message}\n`);
-    });
+toolForm.addEventListener('keydown', event => {
+  if (activeTool.id !== 'experimental-gif-editor' || event.key !== 'Enter') return;
+  if (event.target.matches('#previewTimeInput')) {
+    event.preventDefault();
+    applyExperimentalTimeInput();
+  }
+  if (event.target.matches('#previewFrameInput')) {
+    event.preventDefault();
+    applyExperimentalFrameInput();
   }
 });
 

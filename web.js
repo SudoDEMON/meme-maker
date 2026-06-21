@@ -63,6 +63,17 @@ function optionalInteger(fields, name, label = name, fallback = '') {
   return value;
 }
 
+function optionalPositiveNumber(fields, name, label = name, fallback = '') {
+  const value = optional(fields, name) || fallback;
+  if (value && !/^[0-9]+(?:\.[0-9]+)?$/.test(value)) {
+    throw new Error(`${label} must be a positive number.`);
+  }
+  if (value && Number(value) <= 0) {
+    throw new Error(`${label} must be greater than zero.`);
+  }
+  return value;
+}
+
 function parseTimeValue(value, { allowBlank = false, allowInf = false, label = 'Time' } = {}) {
   const raw = clean(value);
   if (!raw) {
@@ -396,6 +407,13 @@ function resolveInputPath(value, label = 'Input') {
   return resolved;
 }
 
+function validateMediaInputExtension(value, allowed, label = 'Input media') {
+  const ext = path.extname(clean(value)).slice(1).toLowerCase();
+  if (!allowed.includes(ext)) {
+    throw new Error(`${label} must be one of: ${allowed.map(item => item.toUpperCase()).join(', ')}.`);
+  }
+}
+
 function addCaptionOptions(args, fields) {
   const options = [
     ['topY', '--top-y'],
@@ -528,6 +546,35 @@ function durationLabel(seconds) {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
+function parseFrameRate(value) {
+  const raw = clean(value);
+  if (!raw || raw === '0/0') return null;
+  if (raw.includes('/')) {
+    const [numerator, denominator] = raw.split('/').map(Number);
+    if (Number.isFinite(numerator) && Number.isFinite(denominator) && denominator > 0) {
+      const rate = numerator / denominator;
+      return rate > 0 ? rate : null;
+    }
+    return null;
+  }
+  const rate = Number(raw);
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
+function mediaFrameInfo(streams, duration) {
+  const video = (Array.isArray(streams) ? streams : []).find(stream => stream.codec_type === 'video') || {};
+  const fps = parseFrameRate(video.avg_frame_rate) || parseFrameRate(video.r_frame_rate);
+  const exactFrames = Number(video.nb_frames);
+  const estimatedFrames = Number.isFinite(duration) && fps ? Math.round(duration * fps) : null;
+  const frameCount = Number.isFinite(exactFrames) && exactFrames > 0 ? exactFrames : estimatedFrames;
+  return {
+    width: Number(video.width) || null,
+    height: Number(video.height) || null,
+    fps,
+    frameCount: Number.isFinite(frameCount) && frameCount > 0 ? frameCount : null
+  };
+}
+
 async function sourceInfo(value) {
   const raw = required({ value }, 'value', 'Source');
   const resolved = path.resolve(REPO_ROOT, raw);
@@ -535,13 +582,14 @@ async function sourceInfo(value) {
   if (fs.existsSync(resolved)) {
     const { stdout } = await runCapture('ffprobe', [
       '-v', 'error',
-      '-show_entries', 'format=duration,format_name:stream=codec_type,codec_name,width,height',
+      '-show_entries', 'format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,nb_frames',
       '-of', 'json',
       resolved
     ]);
     const info = JSON.parse(stdout || '{}');
     const duration = Number(info.format && info.format.duration);
     const streams = Array.isArray(info.streams) ? info.streams : [];
+    const frameInfo = mediaFrameInfo(streams, duration);
     return {
       ok: true,
       supported: true,
@@ -551,6 +599,10 @@ async function sourceInfo(value) {
       defaultStem: sourceFallbackStem(raw),
       duration: Number.isFinite(duration) ? duration : null,
       durationLabel: durationLabel(duration),
+      width: frameInfo.width,
+      height: frameInfo.height,
+      fps: frameInfo.fps,
+      frameCount: frameInfo.frameCount,
       format: info.format && info.format.format_name || '',
       streams
     };
@@ -566,6 +618,12 @@ async function sourceInfo(value) {
   ]);
   const info = JSON.parse(stdout || '{}');
   const duration = Number(info.duration);
+  const fps = Number(info.fps);
+  const width = Number(info.width);
+  const height = Number(info.height);
+  const frameCount = Number.isFinite(duration) && Number.isFinite(fps) && fps > 0
+    ? Math.round(duration * fps)
+    : null;
   const defaultStem = safeStem(info.id || info.display_id || info.title || sourceFallbackStem(raw), sourceFallbackStem(raw));
   return {
     ok: true,
@@ -578,7 +636,11 @@ async function sourceInfo(value) {
     webpageUrl: info.webpage_url || remote,
     defaultStem,
     duration: Number.isFinite(duration) ? duration : null,
-    durationLabel: durationLabel(duration)
+    durationLabel: durationLabel(duration),
+    width: Number.isFinite(width) && width > 0 ? width : null,
+    height: Number.isFinite(height) && height > 0 ? height : null,
+    fps: Number.isFinite(fps) && fps > 0 ? fps : null,
+    frameCount: Number.isFinite(frameCount) && frameCount > 0 ? frameCount : null
   };
 }
 
@@ -743,6 +805,8 @@ function buildJob(action, fields) {
 
     case 'caption-local': {
       const input = required(data, 'input', 'Input media');
+      resolveInputPath(input, 'Input media');
+      validateMediaInputExtension(input, ['gif', 'mp4', 'webm'], 'Input media');
       const requestedFormat = optional(data, 'format') || 'gif';
       validateFormat(requestedFormat, ['gif', 'mp4', 'webm']);
       const inputStem = safeStem(path.basename(input).replace(/\.[^.]+$/, ''), 'captioned');
@@ -769,6 +833,8 @@ function buildJob(action, fields) {
 
     case 'experimental-gif-editor': {
       const input = required(data, 'input', 'Input media');
+      resolveInputPath(input, 'Input media');
+      validateMediaInputExtension(input, ['gif', 'webm', 'mp4'], 'Input media');
       const requestedFormat = optional(data, 'format') || 'gif';
       validateFormat(requestedFormat, ['gif', 'mp4', 'webm']);
       const inputStem = safeStem(path.basename(input).replace(/\.[^.]+$/, ''), 'visual-caption');
@@ -791,15 +857,19 @@ function buildJob(action, fields) {
       const bottomY = optionalInteger(data, 'bottomY', 'Text 2 y', '0');
       const fontSize = optionalInteger(data, 'fontSize', 'Font size', '50');
       const width = optionalInteger(data, 'width', 'Width', '720');
+      const outputFps = optionalPositiveNumber(data, 'outputFps', 'Output FPS');
       const fontFamily = optional(data, 'fontFamily');
       const font = optional(data, 'fontPath');
 
       args.push('--top-x', topX, '--top-y', topY);
       args.push('--bottom-x', bottomX, '--bottom-y', bottomY);
       args.push('--font-size', fontSize, '--width', width);
+      if (outputFps) args.push('--fps', outputFps);
       if (fontFamily) args.push('--font-family', fontFamily);
       if (data.bold) args.push('--bold');
       if (data.italic) args.push('--italic');
+      if (data.underline) args.push('--underline');
+      if (data.strike) args.push('--strikethrough');
       args.push(input, output, top, bottom);
       if (font) args.push(font);
 

@@ -81,12 +81,15 @@ Local file pickers upload the selected file into `.web-uploads/` and then use
 that uploaded local path for GIF/video/audio/font/HTML inputs. This keeps the
 browser security model intact while still giving a normal file chooser.
 
-The **Experimental** tab includes a visual media text editor. It loads a preview
-frame from a selected GIF, MP4, or WebM, lets you scrub through the media, drag
-two text fields into place, and render the result as GIF, MP4, or WebM. It
-passes the resulting x/y coordinates plus font face, bold, italic, and size
-settings to the local caption renderer. If you browse or enter a repo-local font
-path, the preview text loads that font file in the browser before rendering.
+The **Experimental** tab includes a visual media text editor. Input can be GIF,
+WebM, or MP4. Output is an output name plus a GIF/MP4/WebM dropdown. It loads a
+preview frame, shows resolution/total time/FPS/frame count, lets you scrub with
+the slider or editable time/frame fields, drag two text fields into place, set
+optional output FPS, and render the result as GIF, MP4, or WebM. It passes the
+resulting x/y coordinates plus font face, bold, italic, underline,
+strikethrough, and size settings to the local caption renderer. If you browse or
+enter a repo-local font path, the preview text loads that font file in the
+browser before rendering.
 
 ```bash
 MM_WEB_PORT=3001 npm run web
@@ -184,8 +187,8 @@ brew install yt-dlp ffmpeg node
 - `convert.sh` requires an explicit output and accepts `gif`, `mp3`, `mp4`, or `webm`.
 - Caption text can be blank: use `"" ""` or `--no-text`. In the interactive menu, leave text prompts blank for no text.
 - End time can be blank/omitted to use everything from the start time through the end of the video. Internally this uses yt-dlp's `inf` section end when a section is still needed.
-- `--top-y`, `--bottom-y`, `--font-size`, and `--width` control caption placement and output sizing.
-- `--top-x`, `--bottom-x`, `--bottom-from-top`, `--font-family`, `--bold`, and `--italic` are available for the experimental visual editor and advanced caption placement.
+- `--top-y`, `--bottom-y`, `--font-size`, `--width`, and `--fps` control caption placement and output sizing.
+- `--top-x`, `--bottom-x`, `--bottom-from-top`, `--font-family`, `--bold`, `--italic`, `--underline`, and `--strikethrough` are available for the experimental visual editor and advanced caption placement.
 - `--top-font-family`, `--top-font-size`, `--top-bold`, `--top-italic`, `--bottom-font-family`, `--bottom-font-size`, `--bottom-bold`, and `--bottom-italic` control the two caption lines independently.
 - In `--caption-local` mode, `--start` and `--end` trim the local source before captioning.
 
@@ -198,6 +201,7 @@ All scripts support `-h` / `--help`.
 - `MM_TOP_Y=15` / `MM_BOTTOM_Y=75` — default caption offsets for `mememaker`
 - `MM_FONT_SIZE=50` / `MM_WIDTH=720` — default caption size and output width for `mememaker`
 - `MM_BUILD_FPS=60` — frame rate for `build.sh` captures and encodes
+- `MM_OUTPUT_FPS=30` — optional forced output frame rate for `mememaker`
 - `MM_WEBM_CRF=34` — WebM quality/speed target; lower is higher quality and slower
 - `MM_WEBM_CPU_USED=5` — WebM VP9 speed setting; higher is faster with lower compression quality
 - `MM_WEBM_TILE_COLUMNS=2` — WebM VP9 tiling for parallel encoding

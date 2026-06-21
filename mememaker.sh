@@ -24,6 +24,7 @@ TOP_Y="${MM_TOP_Y:-15}"
 BOTTOM_Y="${MM_BOTTOM_Y:-75}"
 WIDTH="${MM_WIDTH:-720}"
 FPS="${MM_FPS:-15}"
+OUTPUT_FPS="${MM_OUTPUT_FPS:-}"
 SIZE="${MM_FONT_SIZE:-50}"
 STROKE="${MM_STROKE:-3}"
 TOP_X="${MM_TOP_X:-(w-text_w)/2}"
@@ -32,6 +33,8 @@ BOTTOM_FROM_TOP=0
 FONT_FAMILY="${MM_FONT_FAMILY:-}"
 FONT_BOLD=0
 FONT_ITALIC=0
+TEXT_UNDERLINE=0
+TEXT_STRIKE=0
 TOP_FONT_FAMILY="${MM_TOP_FONT_FAMILY:-}"
 BOTTOM_FONT_FAMILY="${MM_BOTTOM_FONT_FAMILY:-}"
 TOP_FONT_SIZE="${MM_TOP_FONT_SIZE:-}"
@@ -61,9 +64,12 @@ Options:
   --bottom-x <px>       Bottom caption x offset from the left. Default: centered
   --bottom-from-top     Treat --bottom-y as a top-origin y coordinate.
   --font-size <px>      Caption font size. Default: 50
+  --fps <rate>          Output frame rate. GIF defaults to MM_FPS or 15.
   --font-family <name>  Fontconfig family to resolve when no font path is given.
   --bold                Resolve a bold font face when possible.
   --italic              Resolve an italic font face when possible.
+  --underline           Draw an underline below caption text.
+  --strikethrough       Draw a strike line through caption text.
   --top-font-family <name>
   --top-font-size <px>
   --top-bold
@@ -99,6 +105,12 @@ lower_ext() {
   printf '%s\n' "${path##*.}" | tr '[:upper:]' '[:lower:]'
 }
 
+is_positive_number() {
+  local value=$1
+  [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  awk -v value="$value" 'BEGIN { exit !(value > 0) }'
+}
+
 ensure_parent_dir() {
   local out=$1
   local d
@@ -109,6 +121,9 @@ ensure_parent_dir() {
 validate_layout_options() {
   [[ "$WIDTH" =~ ^[0-9]+$ && "$WIDTH" -gt 0 ]] || die "--width must be a positive integer: $WIDTH"
   [[ "$FPS" =~ ^[0-9]+$ && "$FPS" -gt 0 ]] || die "MM_FPS must be a positive integer: $FPS"
+  if [[ -n "$OUTPUT_FPS" ]] && ! is_positive_number "$OUTPUT_FPS"; then
+    die "--fps must be a positive number: $OUTPUT_FPS"
+  fi
   [[ "$SIZE" =~ ^[0-9]+$ && "$SIZE" -gt 0 ]] || die "--font-size must be a positive integer: $SIZE"
   [[ "$STROKE" =~ ^[0-9]+$ ]] || die "MM_STROKE must be a non-negative integer: $STROKE"
   [[ "$TOP_Y" =~ ^[0-9]+$ ]] || die "--top-y must be a non-negative integer: $TOP_Y"
@@ -184,6 +199,52 @@ resolve_caption_font_for() {
   detect_font "$font_arg"
 }
 
+longest_line_length() {
+  local text=$1
+  local line max=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    ((${#line} > max)) && max=${#line}
+  done <<< "$text"
+  printf '%s\n' "$max"
+}
+
+append_text_decoration() {
+  local filter=$1
+  local text=$2
+  local x_expr=$3
+  local y_expr=$4
+  local size=$5
+  local chars width line_height result
+
+  if (( ! TEXT_UNDERLINE && ! TEXT_STRIKE )); then
+    printf '%s\n' "$filter"
+    return
+  fi
+
+  if [[ "$x_expr" == *text_w* ]]; then
+    warn "Underline/strikethrough need numeric x placement; skipping text decoration for centered text."
+    printf '%s\n' "$filter"
+    return
+  fi
+
+  chars="$(longest_line_length "$text")"
+  (( chars < 1 )) && chars=1
+  width=$(( (chars * size * 62 + 99) / 100 ))
+  (( width < 2 )) && width=2
+  line_height=$(( size / 12 ))
+  (( line_height < 2 )) && line_height=2
+
+  result="$filter"
+  if (( TEXT_UNDERLINE )); then
+    result+=",drawbox=x=$x_expr:y=$y_expr+$(( size + line_height )):w=$width:h=$line_height:color=white@0.98:t=fill"
+  fi
+  if (( TEXT_STRIKE )); then
+    result+=",drawbox=x=$x_expr:y=$y_expr+$(( size * 55 / 100 )):w=$width:h=$line_height:color=white@0.98:t=fill"
+  fi
+
+  printf '%s\n' "$result"
+}
+
 build_caption_filter() {
   local top=$1
   local bottom=$2
@@ -214,6 +275,7 @@ build_caption_filter() {
     info "Using top font: $top_font" >&2
     txt="$(write_drawtext_file "$top")"
     filter="drawtext=fontfile=$top_font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$top_size:x=$TOP_X:y=$TOP_Y"
+    filter="$(append_text_decoration "$filter" "$top" "$TOP_X" "$TOP_Y" "$top_size")"
   fi
 
   if [[ -n "$bottom" ]]; then
@@ -229,6 +291,7 @@ build_caption_filter() {
       filter+=","
     fi
     filter+="drawtext=fontfile=$bottom_font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$bottom_size:x=$BOTTOM_X:y=$bottom_y_expr"
+    filter="$(append_text_decoration "$filter" "$bottom" "$BOTTOM_X" "$bottom_y_expr" "$bottom_size")"
   fi
 
   printf '%s\n' "$filter"
@@ -244,6 +307,8 @@ encode_media() {
   local scale_filter="scale=$WIDTH:-2:flags=lanczos"
   local filter
   local palette
+  local gif_fps="${OUTPUT_FPS:-$FPS}"
+  local video_filter
   local -a trim_args=()
 
   ensure_parent_dir "$out"
@@ -258,7 +323,7 @@ encode_media() {
   case "$type" in
     gif)
       palette="$(make_temp_file --ext png)"
-      filter="$(append_filter "fps=$FPS,$scale_filter" "$caption_filter")"
+      filter="$(append_filter "fps=$gif_fps,$scale_filter" "$caption_filter")"
 
       info "Generating palette..."
       ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter,palettegen" -frames:v 1 -update 1 "$palette"
@@ -269,14 +334,18 @@ encode_media() {
              -loop 0 "$out"
       ;;
     mp4)
-      filter="$(append_filter "$scale_filter" "$caption_filter")"
+      video_filter="$scale_filter"
+      [[ -n "$OUTPUT_FPS" ]] && video_filter="fps=$OUTPUT_FPS,$video_filter"
+      filter="$(append_filter "$video_filter" "$caption_filter")"
       info "Creating MP4..."
       ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter" \
              -c:v libx264 -crf 23 -preset slow -movflags +faststart \
              -pix_fmt yuv420p "$out"
       ;;
     webm)
-      filter="$(append_filter "$scale_filter" "$caption_filter")"
+      video_filter="$scale_filter"
+      [[ -n "$OUTPUT_FPS" ]] && video_filter="fps=$OUTPUT_FPS,$video_filter"
+      filter="$(append_filter "$video_filter" "$caption_filter")"
       info "Creating WebM..."
       ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter" \
              -c:v libvpx-vp9 -crf "${MM_WEBM_CRF:-34}" -b:v 0 \
@@ -646,6 +715,11 @@ while (($#)); do
       SIZE="$2"
       shift 2
       ;;
+    --fps|--output-fps)
+      [[ $# -ge 2 ]] || die "$1 requires a value"
+      OUTPUT_FPS="$2"
+      shift 2
+      ;;
     --font-family)
       [[ $# -ge 2 ]] || die "--font-family requires a value"
       FONT_FAMILY="$2"
@@ -657,6 +731,14 @@ while (($#)); do
       ;;
     --italic)
       FONT_ITALIC=1
+      shift
+      ;;
+    --underline)
+      TEXT_UNDERLINE=1
+      shift
+      ;;
+    --strikethrough|--strike)
+      TEXT_STRIKE=1
       shift
       ;;
     --top-font-family)
