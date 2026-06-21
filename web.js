@@ -14,6 +14,7 @@ const HOST = process.env.MM_WEB_HOST || '127.0.0.1';
 const PORT = Number(process.env.MM_WEB_PORT || process.env.PORT || 3000);
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_UPLOAD_BYTES = Number(process.env.MM_WEB_MAX_UPLOAD_BYTES || 500 * 1024 * 1024);
+const SOURCE_INFO_TIMEOUT_MS = Number(process.env.MM_WEB_SOURCE_INFO_TIMEOUT_MS || 15000);
 
 const jobs = new Map();
 
@@ -129,6 +130,89 @@ function youtubeId(value) {
   return id;
 }
 
+function extractYouTubeId(value) {
+  const raw = clean(value);
+  if (!raw) return '';
+  if (/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;
+
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.replace(/^www\./, '');
+    let id = '';
+    if (host === 'youtu.be') {
+      id = url.pathname.split('/').filter(Boolean)[0] || '';
+    } else if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+      id = url.searchParams.get('v') || '';
+      if (!id) {
+        const parts = url.pathname.split('/').filter(Boolean);
+        const marker = parts.findIndex(part => ['shorts', 'embed', 'v'].includes(part));
+        if (marker >= 0) id = parts[marker + 1] || '';
+      }
+    }
+    id = clean(id).split(/[?&#/]/)[0];
+    return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : '';
+  } catch {
+    return '';
+  }
+}
+
+function looksLikeUrl(value) {
+  return /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(clean(value));
+}
+
+function sourceFallbackStem(value, fallback = 'media') {
+  const raw = clean(value);
+  const ytId = extractYouTubeId(raw);
+  if (ytId) return safeStem(ytId, fallback);
+
+  if (looksLikeUrl(raw)) {
+    try {
+      const url = new URL(raw);
+      const pathStem = safeStem(path.posix.basename(url.pathname).replace(/\.[^.]+$/, ''), '');
+      return pathStem || safeStem(url.hostname.replace(/^www\./, ''), fallback);
+    } catch {
+      return safeStem(raw, fallback);
+    }
+  }
+
+  return safeStem(path.basename(raw).replace(/\.[^.]+$/, ''), fallback);
+}
+
+function ytDlpSource(value) {
+  const raw = clean(value);
+  const ytId = extractYouTubeId(raw);
+  if (ytId) return ytId;
+  if (looksLikeUrl(raw)) return raw;
+  throw new Error('Source must be a local file, a YouTube ID, or a supported media URL.');
+}
+
+function ytDlpProbeSource(value) {
+  const raw = clean(value);
+  const ytId = extractYouTubeId(raw);
+  if (ytId) return `https://www.youtube.com/watch?v=${ytId}`;
+  if (looksLikeUrl(raw)) return raw;
+  throw new Error('Source must be a local file, a YouTube ID, or a supported media URL.');
+}
+
+function resolveJobSource(value, label = 'Source') {
+  const raw = clean(value);
+  if (!raw) {
+    throw new Error(`${label} is required.`);
+  }
+
+  const resolved = path.resolve(REPO_ROOT, raw);
+  if (fs.existsSync(resolved)) {
+    return resolved;
+  }
+
+  return ytDlpSource(raw);
+}
+
+function isLocalSource(value) {
+  const raw = clean(value);
+  return Boolean(raw && fs.existsSync(path.resolve(REPO_ROOT, raw)));
+}
+
 function defaultDirForExt(ext) {
   switch (ext) {
     case 'gif': return 'gifs';
@@ -183,6 +267,16 @@ function normalizeVideoOutput(out, fallbackStem = 'clip', fallbackFormat = 'mp4'
   });
 }
 
+function normalizeMediaOutput(out, format, fallbackStem = 'media') {
+  validateFormat(format, ['gif', 'mp3', 'mp4', 'webm']);
+  return normalizeOutputPath(out, {
+    defaultExt: format,
+    allowedExts: [format],
+    fallbackStem,
+    defaultDir: defaultDirForExt(format)
+  });
+}
+
 function outputExt(outputPath) {
   return path.posix.extname(outputPath).slice(1).toLowerCase();
 }
@@ -226,6 +320,14 @@ function addCaptionOptions(args, fields) {
   }
 }
 
+function addFontOptions(args, fields) {
+  const family = optional(fields, 'fontFamily');
+  const style = optional(fields, 'fontStyle');
+  if (family) args.push('--font-family', family);
+  if (style === 'bold' || style === 'bold-italic') args.push('--bold');
+  if (style === 'italic' || style === 'bold-italic') args.push('--italic');
+}
+
 function validateFormat(format, allowed) {
   if (!allowed.includes(format)) {
     throw new Error(`Format must be one of: ${allowed.join(', ')}.`);
@@ -255,6 +357,118 @@ function runProcess(cmd, args, options = {}) {
   });
 }
 
+function runCapture(cmd, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, {
+      cwd: options.cwd || REPO_ROOT,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const timeoutMs = options.timeoutMs || SOURCE_INFO_TIMEOUT_MS;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill('SIGTERM');
+      reject(new Error(`${path.basename(cmd)} timed out after ${timeoutMs}ms.`));
+    }, timeoutMs);
+
+    child.stdout.on('data', chunk => {
+      stdout += chunk.toString();
+      if (stdout.length > 2 * 1024 * 1024) stdout = stdout.slice(-2 * 1024 * 1024);
+    });
+    child.stderr.on('data', chunk => {
+      stderr += chunk.toString();
+      if (stderr.length > 20000) stderr = stderr.slice(-20000);
+    });
+    child.on('error', err => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(err);
+    });
+    child.on('close', code => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve({ stdout, stderr });
+      } else {
+        reject(new Error(stderr.trim() || `${path.basename(cmd)} exited with ${code}`));
+      }
+    });
+  });
+}
+
+function durationLabel(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return '';
+  const total = Math.round(value);
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+async function sourceInfo(value) {
+  const raw = required({ value }, 'value', 'Source');
+  const resolved = path.resolve(REPO_ROOT, raw);
+
+  if (fs.existsSync(resolved)) {
+    const { stdout } = await runCapture('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration,format_name:stream=codec_type,codec_name,width,height',
+      '-of', 'json',
+      resolved
+    ]);
+    const info = JSON.parse(stdout || '{}');
+    const duration = Number(info.format && info.format.duration);
+    const streams = Array.isArray(info.streams) ? info.streams : [];
+    return {
+      ok: true,
+      supported: true,
+      kind: 'local',
+      source: raw,
+      title: path.basename(resolved),
+      defaultStem: sourceFallbackStem(raw),
+      duration: Number.isFinite(duration) ? duration : null,
+      durationLabel: durationLabel(duration),
+      format: info.format && info.format.format_name || '',
+      streams
+    };
+  }
+
+  const remote = ytDlpProbeSource(raw);
+  const { stdout } = await runCapture('yt-dlp', [
+    '--dump-single-json',
+    '--skip-download',
+    '--no-warnings',
+    '--no-playlist',
+    remote
+  ]);
+  const info = JSON.parse(stdout || '{}');
+  const duration = Number(info.duration);
+  const defaultStem = safeStem(info.id || info.display_id || info.title || sourceFallbackStem(raw), sourceFallbackStem(raw));
+  return {
+    ok: true,
+    supported: true,
+    kind: 'remote',
+    source: remote,
+    title: info.title || '',
+    id: info.id || info.display_id || extractYouTubeId(raw) || '',
+    extractor: info.extractor_key || info.extractor || '',
+    webpageUrl: info.webpage_url || remote,
+    defaultStem,
+    duration: Number.isFinite(duration) ? duration : null,
+    durationLabel: durationLabel(duration)
+  };
+}
+
 async function createPreviewFrame(input) {
   const source = resolveInputPath(input, 'Preview input');
   const ext = path.extname(source).toLowerCase();
@@ -277,6 +491,22 @@ function buildJob(action, fields) {
   const data = fields && typeof fields === 'object' ? fields : {};
 
   switch (action) {
+    case 'download-convert': {
+      const sourceRaw = required(data, 'source', 'Source');
+      const source = resolveJobSource(sourceRaw);
+      const start = optional(data, 'start') || '0:00';
+      const end = optional(data, 'end');
+      const format = optional(data, 'format') || 'mp4';
+      validateFormat(format, ['gif', 'mp3', 'mp4', 'webm']);
+      const output = normalizeMediaOutput(optional(data, 'output'), format, sourceFallbackStem(sourceRaw));
+
+      return {
+        cmd: repoPath('convert.sh'),
+        args: [source, start, end, format, output],
+        outputPath: output
+      };
+    }
+
     case 'download-video': {
       const id = youtubeId(required(data, 'videoId', 'YouTube ID'));
       const start = required(data, 'start', 'Start time');
@@ -326,6 +556,46 @@ function buildJob(action, fields) {
         cmd: repoPath('music.sh'),
         args: [id, start, end, output],
         outputPath: output
+      };
+    }
+
+    case 'text-to-media': {
+      const sourceRaw = required(data, 'source', 'Source');
+      const source = resolveJobSource(sourceRaw);
+      const sourceIsLocal = isLocalSource(sourceRaw);
+      const start = optional(data, 'start') || '0:00';
+      const end = optional(data, 'end');
+      const format = optional(data, 'format') || 'gif';
+      validateFormat(format, ['gif', 'mp4', 'webm']);
+      const fallbackStem = `${sourceFallbackStem(sourceRaw)}-captioned`;
+      const output = normalizeMediaOutput(optional(data, 'outputName') || optional(data, 'output'), format, fallbackStem);
+      const top = typeof data.topText === 'string' ? data.topText : '';
+      const bottom = typeof data.bottomText === 'string' ? data.bottomText : '';
+      const font = optional(data, 'fontPath');
+      const args = [];
+      addCaptionOptions(args, data);
+      addFontOptions(args, data);
+
+      if (sourceIsLocal) {
+        args.unshift('--caption-local');
+        args.push('--start', start);
+        if (end) args.push('--end', end);
+        args.push(source, output, top, bottom);
+        if (font) args.push(font);
+        return {
+          cmd: repoPath('mememaker.sh'),
+          args,
+          outputPath: output
+        };
+      }
+
+      const stem = outputStem(output, fallbackStem);
+      args.push(source, start, end, format, top, bottom, stem);
+      if (font) args.push(font);
+      return {
+        cmd: repoPath('mememaker.sh'),
+        args,
+        outputPath: `${format === 'gif' ? 'gifs' : 'videos'}/${stem}.${format}`
       };
     }
 
@@ -424,6 +694,23 @@ function buildJob(action, fields) {
       return {
         cmd: repoPath('mememaker.sh'),
         args,
+        outputPath: output
+      };
+    }
+
+    case 'audio-to-video': {
+      const sourceRaw = required(data, 'source', 'Source');
+      const source = resolveJobSource(sourceRaw);
+      const start = optional(data, 'start') || '0:00';
+      const end = optional(data, 'end');
+      const audio = resolveInputPath(required(data, 'audio', 'Input audio'), 'Input audio');
+      const format = optional(data, 'format') || 'mp4';
+      validateFormat(format, ['mp4', 'webm']);
+      const output = normalizeVideoOutput(optional(data, 'output'), `${sourceFallbackStem(sourceRaw)}-with-audio`, format);
+
+      return {
+        cmd: repoPath('audio_video.sh'),
+        args: [source, start, end, audio, output],
         outputPath: output
       };
     }
@@ -732,7 +1019,19 @@ async function handleRequest(req, res) {
       ok: true,
       repoRoot: REPO_ROOT,
       localOnly: HOST === '127.0.0.1' || HOST === 'localhost',
-      actions: ['download-video', 'download-gif', 'download-audio', 'caption-youtube', 'caption-local', 'experimental-gif-editor', 'add-audio', 'build-html']
+      actions: [
+        'download-convert',
+        'text-to-media',
+        'audio-to-video',
+        'build-html',
+        'experimental-gif-editor',
+        'download-video',
+        'download-gif',
+        'download-audio',
+        'caption-youtube',
+        'caption-local',
+        'add-audio'
+      ]
     });
     return;
   }
@@ -755,6 +1054,17 @@ async function handleRequest(req, res) {
       sendJson(res, 201, preview);
     } catch (err) {
       sendJson(res, 400, { error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/source-info') {
+    try {
+      const body = await readJson(req);
+      const info = await sourceInfo(required(body, 'source', 'Source'));
+      sendJson(res, 200, info);
+    } catch (err) {
+      sendJson(res, 400, { ok: false, supported: false, error: err.message });
     }
     return;
   }

@@ -9,6 +9,8 @@ scripts=(
   "lib.sh"
   "video.sh"
   "music.sh"
+  "convert.sh"
+  "audio_video.sh"
   "build.sh"
   "install.sh"
   "Memes/mememaker.sh"
@@ -22,8 +24,12 @@ node --check web/app.js
 ./mememaker.sh --help >/dev/null
 ./video.sh --help >/dev/null
 ./music.sh --help >/dev/null
+./convert.sh --help >/dev/null
+./audio_video.sh --help >/dev/null
 ./build.sh --help >/dev/null
 ./install.sh --help >/dev/null
+./convert.sh --help | grep -q 'gif|mp3|mp4|webm'
+./audio_video.sh --help | grep -q 'source-file-or-url-or-youtube-id'
 ./build.sh --help | grep -q 'webm'
 ./video.sh --help | grep -q 'webm'
 ./video.sh --help | grep -q '\[end\]'
@@ -31,8 +37,11 @@ node --check web/app.js
 ./mememaker.sh --help | grep -q '\[end\]'
 ./mememaker.sh --help | grep -q -- '--top-x'
 ./mememaker.sh --help | grep -q -- '--font-family'
+./mememaker.sh --help | grep -q -- '--start'
+./video.sh --help | grep -q 'supported by yt-dlp'
+./music.sh --help | grep -q 'supported by yt-dlp'
 
-bash -c 'set -euo pipefail; source ./lib.sh; [[ "$(yt_dlp_section_range "0:00" "")" == "*0:00-inf" ]]; [[ "$(section_end_label "")" == "end" ]]; ! needs_yt_dlp_section "0:00" ""; needs_yt_dlp_section "0:10" ""; looks_like_time inf'
+bash -c 'set -euo pipefail; source ./lib.sh; [[ "$(yt_dlp_section_range "0:00" "")" == "*0:00-inf" ]]; [[ "$(section_end_label "")" == "end" ]]; ! needs_yt_dlp_section "0:00" ""; needs_yt_dlp_section "0:10" ""; looks_like_time inf; [[ "$(yt_dlp_source_url "O0Dgtar0zB4")" == "https://www.youtube.com/watch?v=O0Dgtar0zB4" ]]; [[ "$(yt_dlp_source_url "https://example.com/video")" == "https://example.com/video" ]]'
 
 if ./mememaker.sh abc 0:00 0:01 gif TOP >/tmp/mm-test-out.txt 2>/tmp/mm-test-err.txt; then
   echo "Expected short mememaker invocation to fail"

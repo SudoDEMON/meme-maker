@@ -5,6 +5,8 @@
     "test": "./test.sh",
     "web": "node web.js",
     "build": "./build.sh",
+    "convert": "./convert.sh",
+    "audio-video": "./audio_video.sh",
     "music": "./music.sh",
     "video": "./video.sh",
     "mememaker": "./mememaker.sh",

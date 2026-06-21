@@ -186,6 +186,8 @@ link_scripts() {
 
   local scripts=(
     "mememaker.sh"
+    "convert.sh"
+    "audio_video.sh"
     "video.sh"
     "music.sh"
     "build.sh"
@@ -197,8 +199,17 @@ link_scripts() {
   for script in "${scripts[@]}"; do
     local src="$REPO_ROOT/$script"
     if [[ -f "$src" ]]; then
+      if [[ "$script" == "convert.sh" ]]; then
+        ln -sf "$src" "$BIN_DIR/meme-convert"
+        ln -sf "$src" "$BIN_DIR/$script"
+        echo "  linked → meme-convert"
+        continue
+      fi
       ln -sf "$src" "$BIN_DIR/${script%.sh}"   # strip .sh for nicer commands
       ln -sf "$src" "$BIN_DIR/$script"         # keep .sh version too
+      if [[ "$script" == "audio_video.sh" ]]; then
+        ln -sf "$src" "$BIN_DIR/audio-video"
+      fi
       echo "  linked → ${script%.sh}"
     else
       warn "Missing: $script"
@@ -435,7 +446,7 @@ NODE
   # --- Linked commands in PATH ---
   echo
   echo "${BOLD}Installed commands (in $BIN_DIR):${RESET}"
-  local cmds=(mememaker video music build meme-simple)
+  local cmds=(mememaker meme-convert audio_video audio-video video music build meme-simple)
   local missing_links=0
   for c in "${cmds[@]}"; do
     if [[ -L "$BIN_DIR/$c" || -f "$BIN_DIR/$c" ]]; then
@@ -505,10 +516,11 @@ echo
 cat <<EOF
 You can now run the tools directly:
 
-  mememaker   video   music   build   meme-simple
+  mememaker   meme-convert   audio-video   video   music   build   meme-simple
 
 Try:
   mememaker --help
+  meme-convert --help
   video --help
 
 To update later:

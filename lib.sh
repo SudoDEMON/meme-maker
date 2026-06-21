@@ -258,6 +258,38 @@ looks_like_time() {
   [[ "$1" =~ ^([0-9]+:)?[0-9]+:[0-9]+$ || "$1" =~ ^[0-9]+:[0-9]+$ || "$1" =~ ^[0-9]+$ || "${1,,}" == "inf" ]]
 }
 
+looks_like_url() {
+  [[ "${1:-}" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]]
+}
+
+yt_dlp_source_url() {
+  local source=$1
+  if looks_like_url "$source"; then
+    printf '%s\n' "$source"
+  else
+    printf 'https://www.youtube.com/watch?v=%s\n' "$source"
+  fi
+}
+
+safe_output_stem() {
+  local value=${1:-output}
+  local stem
+  value="${value%%[\?#]*}"
+  stem="$(basename "$value")"
+  stem="${stem%.*}"
+  stem="$(printf '%s' "$stem" | tr -c 'A-Za-z0-9._-' '_' | sed -E 's/^_+//; s/_+$//')"
+  printf '%s\n' "${stem:-output}"
+}
+
+source_output_stem() {
+  local source=$1
+  if looks_like_url "$source"; then
+    safe_output_stem "$source"
+  else
+    safe_output_stem "$source"
+  fi
+}
+
 section_end_or_inf() {
   local end=${1:-}
   if [[ -z "$end" || "${end,,}" == "inf" ]]; then
