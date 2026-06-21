@@ -378,6 +378,18 @@ h2 {
   grid-column: span 3;
 }
 
+.field.output-field {
+  grid-column: span 8;
+}
+
+.field.compact {
+  grid-column: span 2;
+}
+
+.field.font-face-field {
+  grid-column: span 10;
+}
+
 .field label {
   color: var(--muted);
   font-size: 0.82rem;
@@ -487,6 +499,10 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   min-height: 42px;
+}
+
+.experimental-style-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .toggle-pill {
@@ -684,7 +700,10 @@ h2 {
 
   .field,
   .field.third,
-  .field.quarter {
+  .field.quarter,
+  .field.output-field,
+  .field.compact,
+  .field.font-face-field {
     grid-column: 1 / -1;
   }
 }

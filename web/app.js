@@ -292,7 +292,7 @@ function renderExperimentalEditor() {
     <div class="experimental-editor">
       <div class="field-grid">
         <div class="field full">
-          <label for="input">Input: GIF / WebM / MP4</label>
+          <label for="input">Input: GIF / MP4 / WebM</label>
           <div class="file-field">
             <input id="input" name="input" type="text" placeholder="gifs/input.gif, videos/input.webm, or videos/input.mp4" required>
             <label class="file-button">
@@ -300,13 +300,13 @@ function renderExperimentalEditor() {
               <input type="file" data-upload-for="input" accept=".gif,.webm,.mp4,image/gif,video/webm,video/mp4">
             </label>
           </div>
-          <div class="field-status" data-upload-status-for="input"></div>
+          <div class="field-status" data-upload-status-for="input">Input properties: Resolution - * Total time - * Frames - * FPS -</div>
         </div>
-        <div class="field">
-          <label for="output">Output name</label>
+        <div class="field output-field">
+          <label for="output">Output</label>
           <input id="output" name="output" type="text" placeholder="input-visual">
         </div>
-        <div class="field">
+        <div class="field compact">
           <label for="format">Output format</label>
           <select id="format" name="format">
             <option value="gif">GIF</option>
@@ -314,7 +314,7 @@ function renderExperimentalEditor() {
             <option value="webm">WebM</option>
           </select>
         </div>
-        <div class="field quarter">
+        <div class="field compact">
           <label for="outputFps">Output FPS</label>
           <input id="outputFps" name="outputFps" type="number" min="0.1" step="0.1" placeholder="auto">
         </div>
@@ -326,7 +326,7 @@ function renderExperimentalEditor() {
           <label for="bottomText">Text 2</label>
           <textarea id="bottomText" name="bottomText" data-editor-bind="bottomText">BOTTOM</textarea>
         </div>
-        <div class="field quarter">
+        <div class="field font-face-field">
           <label for="fontFamily">Font face</label>
           <select id="fontFamily" name="fontFamily" data-editor-style>
             <option value="sans-serif">Sans</option>
@@ -336,34 +336,18 @@ function renderExperimentalEditor() {
             <option value="DejaVu Sans">DejaVu Sans</option>
           </select>
         </div>
-        <div class="field quarter">
-          <label for="fontSize">Size</label>
+        <div class="field compact">
+          <label for="fontSize">Font size</label>
           <input id="fontSize" name="fontSize" type="number" min="1" value="50" data-editor-style>
         </div>
-        <div class="field">
+        <div class="field full">
           <label>Style</label>
-          <div class="toggle-row">
+          <div class="toggle-row experimental-style-row">
             <label class="toggle-pill"><input type="checkbox" name="bold" value="1" checked data-editor-style> Bold</label>
             <label class="toggle-pill"><input type="checkbox" name="italic" value="1" data-editor-style> Italic</label>
             <label class="toggle-pill"><input type="checkbox" name="underline" value="1" data-editor-style> Underline</label>
             <label class="toggle-pill"><input type="checkbox" name="strike" value="1" data-editor-style> Strike</label>
           </div>
-        </div>
-        <div class="field quarter">
-          <label for="previewTimeInput">Current time</label>
-          <input id="previewTimeInput" type="text" value="0:00" inputmode="decimal" disabled>
-        </div>
-        <div class="field quarter">
-          <label for="previewFrameInput">Current frame</label>
-          <input id="previewFrameInput" type="number" min="0" step="1" value="0" disabled>
-        </div>
-        <div class="field">
-          <label>Total media</label>
-          <div class="readonly-field" id="previewTotalLabel">0:00 / 0 frames</div>
-        </div>
-        <div class="field full">
-          <label for="previewTime">Scrub preview frame <span id="previewTimeLabel">Current: 0:00 / 0 Total: 0:00 / 0</span></label>
-          <input id="previewTime" type="range" min="0" max="0" step="0.1" value="0" disabled>
         </div>
         <div class="field full">
           <label for="fontPath">Font path</label>
@@ -375,6 +359,26 @@ function renderExperimentalEditor() {
             </label>
           </div>
           <div class="field-status" data-upload-status-for="fontPath"></div>
+        </div>
+        <div class="field">
+          <label for="previewTimeInput">Current time</label>
+          <input id="previewTimeInput" type="text" value="0:00" inputmode="decimal" disabled>
+        </div>
+        <div class="field">
+          <label for="previewFrameInput">Current frame</label>
+          <input id="previewFrameInput" type="number" min="0" step="1" value="0" disabled>
+        </div>
+        <div class="field">
+          <label>Total time</label>
+          <div class="readonly-field" id="previewTotalTimeLabel">0:00</div>
+        </div>
+        <div class="field">
+          <label>Total frames</label>
+          <div class="readonly-field" id="previewTotalFramesLabel">0</div>
+        </div>
+        <div class="field full">
+          <label for="previewTime">Scrub preview frame <span id="previewTimeLabel">Current: 0:00/0</span></label>
+          <input id="previewTime" type="range" min="0" max="0" step="0.1" value="0" disabled>
         </div>
       </div>
 
@@ -648,19 +652,18 @@ function clampPreviewTime(seconds) {
 }
 
 function experimentalMetadataSummary() {
-  const pieces = [];
-  if (editorState.naturalWidth && editorState.naturalHeight) {
-    pieces.push(`Resolution ${editorState.naturalWidth}x${editorState.naturalHeight}`);
-  }
-  if (editorState.duration) pieces.push(`Total ${formatTimeLabel(editorState.duration)}`);
-  if (editorState.fps) pieces.push(`FPS ${formatNumber(editorState.fps)}`);
-  if (editorState.frameCount) pieces.push(`Frames ${editorState.frameCount}`);
-  return pieces.join(' • ');
+  const resolution = editorState.naturalWidth && editorState.naturalHeight
+    ? `${editorState.naturalWidth}x${editorState.naturalHeight}`
+    : '-';
+  const totalTime = editorState.duration ? formatTimeLabel(editorState.duration) : '-';
+  const frames = editorState.frameCount || '-';
+  const fps = editorState.fps ? formatNumber(editorState.fps) : '-';
+  return `Input properties: Resolution ${resolution} * Total time ${totalTime} * Frames ${frames} * FPS ${fps}`;
 }
 
 function setExperimentalMediaStatus(prefix = '', state = 'ready') {
   const summary = experimentalMetadataSummary();
-  setUploadStatus('input', [prefix, summary].filter(Boolean).join(' • '), state);
+  setUploadStatus('input', [summary, prefix].filter(Boolean).join(' * '), state);
 }
 
 function syncExperimentalPreviewControls(seconds) {
@@ -668,7 +671,8 @@ function syncExperimentalPreviewControls(seconds) {
   const label = toolForm.querySelector('#previewTimeLabel');
   const timeInput = toolForm.querySelector('#previewTimeInput');
   const frameInput = toolForm.querySelector('#previewFrameInput');
-  const totalLabel = toolForm.querySelector('#previewTotalLabel');
+  const totalTimeLabel = toolForm.querySelector('#previewTotalTimeLabel');
+  const totalFramesLabel = toolForm.querySelector('#previewTotalFramesLabel');
   const value = clampPreviewTime(seconds);
   const frame = frameFromTime(value);
   const totalTime = editorState.duration ? formatTimeLabel(editorState.duration) : '0:00';
@@ -685,8 +689,9 @@ function syncExperimentalPreviewControls(seconds) {
     frameInput.max = String(previewMaxFrame());
     frameInput.disabled = !enabled || !editorState.fps;
   }
-  if (totalLabel) totalLabel.textContent = `${totalTime}/${totalFrames} frames`;
-  if (label) label.textContent = `Current: ${formatTimeLabel(value)}/${frame} Total: ${totalTime}/${totalFrames}`;
+  if (totalTimeLabel) totalTimeLabel.textContent = totalTime;
+  if (totalFramesLabel) totalFramesLabel.textContent = String(totalFrames);
+  if (label) label.textContent = `Current: ${formatTimeLabel(value)}/${frame}`;
 }
 
 function setExperimentalPreviewTime(seconds, { load = true } = {}) {
@@ -813,7 +818,7 @@ async function loadExperimentalPreview() {
     refreshExperimentalPositions();
   }
   syncExperimentalPreviewControls(time);
-  setExperimentalMediaStatus(`Preview at ${formatTimeLabel(time)} / frame ${frameFromTime(time)}`, 'ready');
+  setExperimentalMediaStatus('', 'ready');
 }
 
 function beginExperimentalDrag(event) {
