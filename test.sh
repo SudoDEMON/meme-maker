@@ -38,6 +38,8 @@ node --check web/app.js
 ./mememaker.sh --help | grep -q -- '--top-x'
 ./mememaker.sh --help | grep -q -- '--font-family'
 ./mememaker.sh --help | grep -q -- '--start'
+./mememaker.sh --help | grep -q -- '--top-font-size'
+./mememaker.sh --help | grep -q -- '--bottom-font-family'
 ./video.sh --help | grep -q 'supported by yt-dlp'
 ./music.sh --help | grep -q 'supported by yt-dlp'
 

@@ -328,6 +328,24 @@ function addFontOptions(args, fields) {
   if (style === 'italic' || style === 'bold-italic') args.push('--italic');
 }
 
+function addPerLineFontOptions(args, fields) {
+  const topFamily = optional(fields, 'topFontFamily');
+  const topSize = optionalInteger(fields, 'topFontSize', 'Top font size');
+  const topStyle = optional(fields, 'topFontStyle');
+  const bottomFamily = optional(fields, 'bottomFontFamily');
+  const bottomSize = optionalInteger(fields, 'bottomFontSize', 'Bottom font size');
+  const bottomStyle = optional(fields, 'bottomFontStyle');
+
+  if (topFamily) args.push('--top-font-family', topFamily);
+  if (topSize) args.push('--top-font-size', topSize);
+  if (topStyle === 'bold' || topStyle === 'bold-italic') args.push('--top-bold');
+  if (topStyle === 'italic' || topStyle === 'bold-italic') args.push('--top-italic');
+  if (bottomFamily) args.push('--bottom-font-family', bottomFamily);
+  if (bottomSize) args.push('--bottom-font-size', bottomSize);
+  if (bottomStyle === 'bold' || bottomStyle === 'bold-italic') args.push('--bottom-bold');
+  if (bottomStyle === 'italic' || bottomStyle === 'bold-italic') args.push('--bottom-italic');
+}
+
 function validateFormat(format, allowed) {
   if (!allowed.includes(format)) {
     throw new Error(`Format must be one of: ${allowed.join(', ')}.`);
@@ -575,6 +593,7 @@ function buildJob(action, fields) {
       const args = [];
       addCaptionOptions(args, data);
       addFontOptions(args, data);
+      addPerLineFontOptions(args, data);
 
       if (sourceIsLocal) {
         args.unshift('--caption-local');

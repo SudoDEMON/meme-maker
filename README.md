@@ -142,8 +142,8 @@ brew install yt-dlp ffmpeg node
 # Make a captioned GIF
 ./mememaker.sh O0Dgtar0zB4 0:00 0:20 gif "BOOM" "HEADSHOT" boom_headshot_text.gif
 
-# Move captions down/up by adjusting offsets
-./mememaker.sh --top-y 40 --bottom-y 110 O0Dgtar0zB4 0:00 0:20 mp4 "BOOM" "HEADSHOT" boom_headshot_text.mp4
+# Move captions down/up and style each line
+./mememaker.sh --top-y 40 --bottom-y 110 --top-font-size 44 --bottom-font-size 58 --bottom-bold O0Dgtar0zB4 0:00 0:20 mp4 "BOOM" "HEADSHOT" boom_headshot_text.mp4
 
 # Add text to an existing GIF
 ./mememaker.sh --caption-local input.gif gifs/input_captioned.gif "TOP" ""
@@ -184,6 +184,7 @@ brew install yt-dlp ffmpeg node
 - End time can be blank/omitted to use everything from the start time through the end of the video. Internally this uses yt-dlp's `inf` section end when a section is still needed.
 - `--top-y`, `--bottom-y`, `--font-size`, and `--width` control caption placement and output sizing.
 - `--top-x`, `--bottom-x`, `--bottom-from-top`, `--font-family`, `--bold`, and `--italic` are available for the experimental visual editor and advanced caption placement.
+- `--top-font-family`, `--top-font-size`, `--top-bold`, `--top-italic`, `--bottom-font-family`, `--bottom-font-size`, `--bottom-bold`, and `--bottom-italic` control the two caption lines independently.
 - In `--caption-local` mode, `--start` and `--end` trim the local source before captioning.
 
 All scripts support `-h` / `--help`.
