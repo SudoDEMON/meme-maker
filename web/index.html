@@ -19,8 +19,7 @@
     <main class="workspace">
       <header class="workspace-head">
         <div>
-          <p class="eyebrow" id="toolKicker">Current Page Name</p>
-          <h1 id="toolTitle">Download Video</h1>
+          <p class="page-title" id="toolKicker">Download or Convert</p>
         </div>
         <div class="server-status">
           <span class="status-dot" id="statusDot"></span>
@@ -31,15 +30,10 @@
       <section class="form-panel">
         <div class="panel-head">
           <div>
-            <p class="eyebrow">Settings</p>
             <h2>Settings</h2>
           </div>
           <div class="head-actions">
-            <button class="icon-button" type="button" id="cancelButton" title="Cancel job" disabled>x</button>
-            <button class="primary-button" type="submit" form="toolForm" id="runButton">
-              <span aria-hidden="true">></span>
-              <span>Run</span>
-            </button>
+            <button class="secondary-button reset-button" type="button" id="resetButton">Reset</button>
           </div>
         </div>
         <form id="toolForm" autocomplete="off"></form>
@@ -48,12 +42,18 @@
       <section class="job-panel" aria-live="polite">
         <div class="job-head">
           <div>
-            <p class="eyebrow">Terminal Window</p>
             <h2>Terminal Window <span id="jobStatus">Ready</span></h2>
           </div>
-          <div class="output-actions">
-            <a id="outputLink" class="output-link" href="#" target="_blank" rel="noopener" hidden>Open output</a>
-            <a id="downloadLink" class="output-link" href="#" hidden>Download output</a>
+          <div class="terminal-actions">
+            <button class="icon-button" type="button" id="cancelButton" title="Cancel job" disabled>x</button>
+            <button class="primary-button" type="submit" form="toolForm" id="runButton">
+              <span aria-hidden="true">></span>
+              <span>Run</span>
+            </button>
+            <div class="output-actions">
+              <a id="outputLink" class="output-link" href="#" target="_blank" rel="noopener" hidden>Open output</a>
+              <a id="downloadLink" class="output-link" href="#" hidden>Download output</a>
+            </div>
           </div>
         </div>
         <pre id="jobLog" class="job-log"></pre>
