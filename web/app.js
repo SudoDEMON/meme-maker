@@ -214,6 +214,47 @@ function validateTimeRange() {
   }
 }
 
+function parseFrameBoundary(value, { allowBlank = true, label = 'Output boundary' } = {}) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    if (allowBlank) return null;
+    throw new Error(`${label} is required.`);
+  }
+
+  const frameMatch = raw.match(/^(?:#|frame\s*:?\s*)?([0-9]+)\s*(?:f|frames?)$/i)
+    || raw.match(/^frame\s+([0-9]+)$/i);
+  if (frameMatch) {
+    const frame = Number(frameMatch[1]);
+    if (!Number.isInteger(frame) || frame < 0) {
+      throw new Error(`${label} frame must be a non-negative whole number.`);
+    }
+    const fps = Number(editorState.fps) || 0;
+    if (fps <= 0) {
+      throw new Error(`${label} uses a frame value, but source FPS is not available.`);
+    }
+    return { kind: 'frame', raw, frame, seconds: frame / fps };
+  }
+
+  return {
+    kind: 'time',
+    raw,
+    frame: null,
+    seconds: parseTimeValue(raw, { label })
+  };
+}
+
+function validateExperimentalOutputRange() {
+  if (activeTool.id !== 'experimental-gif-editor') return;
+  const startInput = experimentalField('outputStart');
+  const endInput = experimentalField('outputEnd');
+  if (!startInput && !endInput) return;
+  const start = parseFrameBoundary(startInput?.value || '', { label: 'Output Start' });
+  const end = parseFrameBoundary(endInput?.value || '', { label: 'Output End' });
+  if (start && end && start.seconds >= end.seconds) {
+    throw new Error('Output Start must be before Output End.');
+  }
+}
+
 function formatTimeLabel(seconds) {
   const value = Math.max(0, Number(seconds) || 0);
   const total = Math.floor(value);
@@ -300,7 +341,7 @@ function renderExperimentalEditor() {
               <input type="file" data-upload-for="input" accept=".gif,.webm,.mp4,image/gif,video/webm,video/mp4">
             </label>
           </div>
-          <div class="field-status" data-upload-status-for="input">Input properties: Resolution - * Total time - * Frames - * FPS -</div>
+          <div class="field-status" data-upload-status-for="input">Input properties: Resolution • Length • Frames • FPS</div>
         </div>
         <div class="field output-field">
           <label for="output">Output</label>
@@ -319,12 +360,28 @@ function renderExperimentalEditor() {
           <input id="outputFps" name="outputFps" type="number" min="0.1" step="0.1" placeholder="auto">
         </div>
         <div class="field">
+          <label for="outputStart">Output Start</label>
+          <input id="outputStart" name="outputStart" type="text" placeholder="0:00 or 0f" inputmode="decimal" data-output-boundary>
+        </div>
+        <div class="field">
+          <label for="outputEnd">Output End</label>
+          <input id="outputEnd" name="outputEnd" type="text" placeholder="0:01.5 or 18f" inputmode="decimal" data-output-boundary>
+        </div>
+        <div class="field">
           <label for="topText">Text 1</label>
           <textarea id="topText" name="topText" data-editor-bind="topText">TOP</textarea>
         </div>
         <div class="field">
           <label for="bottomText">Text 2</label>
           <textarea id="bottomText" name="bottomText" data-editor-bind="bottomText">BOTTOM</textarea>
+        </div>
+        <div class="field">
+          <label for="topLocation">Text 1 location</label>
+          <input id="topLocation" type="text" value="Location: 0/0" readonly>
+        </div>
+        <div class="field">
+          <label for="bottomLocation">Text 2 location</label>
+          <input id="bottomLocation" type="text" value="Location: 0/0" readonly>
         </div>
         <div class="field font-face-field">
           <label for="fontFamily">Font face</label>
@@ -548,6 +605,12 @@ function experimentalField(name) {
   return toolForm.querySelector(`[name="${CSS.escape(name)}"]`);
 }
 
+function setExperimentalLocationDisplay(textName, x, y) {
+  const id = textName === 'topText' ? 'topLocation' : 'bottomLocation';
+  const input = toolForm.querySelector(`#${id}`);
+  if (input) input.value = `Location: ${x}/${y}`;
+}
+
 function setExperimentalPosition(textName, x, y) {
   const overlay = toolForm.querySelector(`[data-editor-text="${CSS.escape(textName)}"]`);
   const xInput = experimentalField(textName === 'topText' ? 'topX' : 'bottomX');
@@ -561,6 +624,7 @@ function setExperimentalPosition(textName, x, y) {
   yInput.value = String(naturalY);
   overlay.style.left = `${naturalX * scale.x}px`;
   overlay.style.top = `${naturalY * scale.y}px`;
+  setExperimentalLocationDisplay(textName, naturalX, naturalY);
 }
 
 function refreshExperimentalPositions() {
@@ -652,13 +716,14 @@ function clampPreviewTime(seconds) {
 }
 
 function experimentalMetadataSummary() {
-  const resolution = editorState.naturalWidth && editorState.naturalHeight
-    ? `${editorState.naturalWidth}x${editorState.naturalHeight}`
-    : '-';
-  const totalTime = editorState.duration ? formatTimeLabel(editorState.duration) : '-';
+  if (!editorState.naturalWidth || !editorState.naturalHeight) {
+    return 'Input properties: Resolution • Length • Frames • FPS';
+  }
+  const resolution = `${editorState.naturalWidth} × ${editorState.naturalHeight}`;
+  const length = editorState.duration ? formatTimeLabel(editorState.duration) : '-';
   const frames = editorState.frameCount || '-';
   const fps = editorState.fps ? formatNumber(editorState.fps) : '-';
-  return `Input properties: Resolution ${resolution} * Total time ${totalTime} * Frames ${frames} * FPS ${fps}`;
+  return `Input properties: Resolution ${resolution} • Length ${length} • Frames ${frames} • FPS ${fps}`;
 }
 
 function setExperimentalMediaStatus(prefix = '', state = 'ready') {
@@ -866,6 +931,7 @@ function formFields() {
     input.value = normalizeSourceInput(input.value);
   }
   validateTimeRange();
+  validateExperimentalOutputRange();
 
   const data = new FormData(toolForm);
   const fields = {};
@@ -1089,6 +1155,14 @@ toolForm.addEventListener('blur', event => {
   }
   if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[data-editor-font-path]')) {
     applyExperimentalStyles();
+  }
+  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[data-output-boundary]')) {
+    try {
+      validateExperimentalOutputRange();
+      setExperimentalMediaStatus('', editorState.naturalWidth ? 'ready' : '');
+    } catch (err) {
+      setUploadStatus('input', err.message, 'error');
+    }
   }
 }, true);
 

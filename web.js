@@ -74,6 +74,35 @@ function optionalPositiveNumber(fields, name, label = name, fallback = '') {
   return value;
 }
 
+function parseFrameBoundary(value, metadata, { allowBlank = true, label = 'Output boundary' } = {}) {
+  const raw = clean(value);
+  if (!raw) {
+    if (allowBlank) return null;
+    throw new Error(`${label} is required.`);
+  }
+
+  const frameMatch = raw.match(/^(?:#|frame\s*:?\s*)?([0-9]+)\s*(?:f|frames?)$/i)
+    || raw.match(/^frame\s+([0-9]+)$/i);
+  if (frameMatch) {
+    const frame = Number(frameMatch[1]);
+    if (!Number.isInteger(frame) || frame < 0) {
+      throw new Error(`${label} frame must be a non-negative whole number.`);
+    }
+    const fps = Number(metadata && metadata.fps) || 0;
+    if (fps <= 0) {
+      throw new Error(`${label} uses a frame value, but source FPS is not available.`);
+    }
+    return { kind: 'frame', raw, frame, seconds: frame / fps };
+  }
+
+  return {
+    kind: 'time',
+    raw,
+    frame: null,
+    seconds: parseTimeValue(raw, { label })
+  };
+}
+
 function parseTimeValue(value, { allowBlank = false, allowInf = false, label = 'Time' } = {}) {
   const raw = clean(value);
   if (!raw) {
@@ -411,6 +440,29 @@ function validateMediaInputExtension(value, allowed, label = 'Input media') {
   const ext = path.extname(clean(value)).slice(1).toLowerCase();
   if (!allowed.includes(ext)) {
     throw new Error(`${label} must be one of: ${allowed.map(item => item.toUpperCase()).join(', ')}.`);
+  }
+}
+
+function localFrameMetadata(inputPath) {
+  const probe = spawnSync('ffprobe', [
+    '-v', 'error',
+    '-show_entries', 'format=duration:stream=codec_type,width,height,avg_frame_rate,r_frame_rate,nb_frames',
+    '-of', 'json',
+    inputPath
+  ], {
+    encoding: 'utf8',
+    timeout: 5000
+  });
+  if (probe.error || probe.status !== 0) {
+    return {};
+  }
+
+  try {
+    const info = JSON.parse(probe.stdout || '{}');
+    const duration = Number(info.format && info.format.duration);
+    return mediaFrameInfo(Array.isArray(info.streams) ? info.streams : [], duration);
+  } catch {
+    return {};
   }
 }
 
@@ -833,7 +885,7 @@ function buildJob(action, fields) {
 
     case 'experimental-gif-editor': {
       const input = required(data, 'input', 'Input media');
-      resolveInputPath(input, 'Input media');
+      const inputPath = resolveInputPath(input, 'Input media');
       validateMediaInputExtension(input, ['gif', 'webm', 'mp4'], 'Input media');
       const requestedFormat = optional(data, 'format') || 'gif';
       validateFormat(requestedFormat, ['gif', 'mp4', 'webm']);
@@ -858,9 +910,17 @@ function buildJob(action, fields) {
       const fontSize = optionalInteger(data, 'fontSize', 'Font size', '50');
       const width = optionalInteger(data, 'width', 'Width', '720');
       const outputFps = optionalPositiveNumber(data, 'outputFps', 'Output FPS');
+      const metadata = localFrameMetadata(inputPath);
+      const outputStart = parseFrameBoundary(optional(data, 'outputStart'), metadata, { label: 'Output Start' });
+      const outputEnd = parseFrameBoundary(optional(data, 'outputEnd'), metadata, { label: 'Output End' });
       const fontFamily = optional(data, 'fontFamily');
       const font = optional(data, 'fontPath');
+      if (outputStart && outputEnd && outputStart.seconds >= outputEnd.seconds) {
+        throw new Error('Output Start must be before Output End.');
+      }
 
+      if (outputStart) args.push('--start', String(outputStart.seconds));
+      if (outputEnd) args.push('--end', String(outputEnd.seconds));
       args.push('--top-x', topX, '--top-y', topY);
       args.push('--bottom-x', bottomX, '--bottom-y', bottomY);
       args.push('--font-size', fontSize, '--width', width);

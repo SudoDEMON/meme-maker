@@ -9,30 +9,33 @@ Status: Verified
 Started: 2026-06-21
 Last updated: 2026-06-21
 
-## Experimental UI Changes
+## Experimental
 
-- [x] Shorten the Output format dropdown.
+- [x] Change unloaded input properties text.
   - Status: Verified.
-  - Evidence: Browser layout check measured Output at 877px and Output format at 209px.
-- [x] Shorten the Output FPS input.
+  - Target: `Input properties: Resolution • Length • Frames • FPS`
+  - Evidence: Puppeteer confirmed the exact unloaded text.
+- [x] Change loaded input properties text.
   - Status: Verified.
-  - Evidence: Browser layout check measured Output at 877px and Output FPS at 209px.
-- [x] Match the requested Settings layout order.
+  - Target: `Input properties: Resolution $width × $height • Length 0:00 • Frames $totalframe • FPS $fps`
+  - Evidence: Puppeteer confirmed `Input properties: Resolution 320 × 180 • Length 0:02 • Frames 24 • FPS 12`.
+- [x] Add Output Start and Output End under Output.
   - Status: Verified.
-  - Target layout:
-    - Text: `Input: GIF / MP4 / WebM`
-    - Field: Input + Browse
-    - Text: `Input properties: Resolution $RES * Total time $TIME * Frames $TFRAME * FPS $FPS`
-    - Field: Output + Output format + Output FPS
-    - Textbox: Top text + Bottom text
-    - Field: Font face + Font size
-    - Checkboxes: Font styles
-    - Field: Font path
-    - Field: Current time + Current frame
-    - Text below fields: Total time + Total frames
-    - Slider
-    - Preview window
-  - Evidence: Puppeteer verified row/order relationships for output controls, textboxes, font controls, current fields, total fields, slider, and preview.
+  - Notes: Fields accept time values such as `0:01.5` and frame values such as `18f` or `frame 18`.
+  - Evidence: Puppeteer confirmed both fields are present with time/frame placeholders.
+- [x] Validate Output Start and Output End formats.
+  - Status: Verified.
+  - Evidence: Direct API check rejected invalid `Output Start=start`.
+- [x] Validate Output Start is before Output End.
+  - Status: Verified.
+  - Evidence: Browser and API checks rejected `Output Start=18f` with `Output End=6f`.
+- [x] Apply Output Start and Output End to the rendered output.
+  - Status: Verified.
+  - Evidence: API render with `Output Start=6f`, `Output End=18f`, and a 12 FPS input produced a 1.000000 second MP4.
+- [x] Add Text 1 and Text 2 location boxes.
+  - Status: Verified.
+  - Target: `Location: $X/$Y`
+  - Evidence: Puppeteer confirmed initial locations and that dragging Text 1 updated the visible location box to match hidden x/y fields.
 
 ## Validation
 
@@ -40,5 +43,7 @@ Last updated: 2026-06-21
 - `npm run doctor` passed.
 - `node --check web/app.js && node --check web.js` passed.
 - `bash -n convert.sh audio_video.sh mememaker.sh video.sh music.sh lib.sh install.sh test.sh` passed.
-- Browser/Puppeteer layout verification passed.
-- Browser verification screenshot: `/tmp/mm-experimental-layout.png`.
+- `git diff --check` passed.
+- Direct API validation passed for invalid Output Start format, Start after End, and frame-based output trimming.
+- Puppeteer UI verification passed for unloaded/loaded input properties text, Output Start/End fields, location boxes, drag-updated location, and client-side Start/End validation.
+- Browser verification screenshot: `/tmp/mm-experimental-range-location.png`.
