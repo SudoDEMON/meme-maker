@@ -415,6 +415,21 @@ h2 {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+.readonly-field {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(23, 147, 209, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-family: var(--mono-font);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
 .file-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -9,26 +9,35 @@ Status: Verified
 Started: 2026-06-21
 Last updated: 2026-06-21
 
-## HTML Title
-- [x] Change from `meme-maker` to `Meme Maker`.
-  - Status: Verified.
-  - Evidence: Puppeteer check confirmed `document.title` is `Meme Maker`.
+## Experimental Editor
 
-## Start End Validation
-- [x] Ensure start time is before end time.
+- [x] Allow MP4 as Experimental input and output.
   - Status: Verified.
-  - Evidence: API check rejected `start=20` with `end=0:10`; Puppeteer check also showed the client-side `Start time must be before end time.` error.
-- [x] When End time is queried, set it as current text instead of default.
+  - Notes: Experimental input accepts GIF/WebM/MP4. Output is an output name plus GIF/MP4/WebM dropdown.
+  - Evidence: API jobs completed for MP4 input to MP4 output, GIF input to WebM output, and WebM input to GIF output.
+- [x] Change scrub preview display to show current time/frame and total time/frames.
   - Status: Verified.
-  - Evidence: Puppeteer source probe on a generated 2-second MP4 set the End input value to `0:02`.
-- [x] Make sure start and end times are actual times or supported formats (actual time vs seconds).
+  - Notes: `/api/source-info` now returns width, height, FPS, and frame count when available.
+  - Evidence: Browser check showed `Current: 0:00.5/6 Total: 0:01.5/18`.
+- [x] Keep slider and allow time/frame fields to be editable jumps.
   - Status: Verified.
-  - Evidence: API and Puppeteer checks rejected invalid `start=bogus`/`start=bad`; accepted supported seconds and `MM:SS` formats during source-probe/run checks.
-
-## Experimental Wishlist
-- [x] Allow you to scrub GIF/video.
+  - Notes: Current time and current frame controls sync with the slider and reload the preview frame.
+  - Evidence: Puppeteer changed the frame input to `6`; preview label updated to frame 6.
+- [x] Add Output FPS option.
   - Status: Verified.
-  - Evidence: Experimental tab now has a scrub slider; Puppeteer check confirmed it initialized with `max=2` for a 2-second MP4 and loading the slider at `1` updated the preview/status to `0:01`.
+  - Notes: Experimental sends `--fps`; `mememaker.sh` supports `--fps`/`--output-fps`.
+  - Evidence: `ffprobe` confirmed generated MP4 at 12 fps, WebM at 10 fps, and GIF at 10 fps.
+- [x] Under input show resolution, total time, FPS, and frame count.
+  - Status: Verified.
+  - Evidence: Browser status showed `Resolution 320x180`, `Total 0:01.5`, `FPS 12`, and `Frames 18`.
+- [x] Remove Load Frame because preview loads automatically.
+  - Status: Verified.
+  - Notes: Input changes, uploads, and scrub jumps auto-load preview frames.
+  - Evidence: Puppeteer confirmed `#previewButton` is absent and preview auto-loaded after entering MP4 input.
+- [x] Add more style options.
+  - Status: Verified.
+  - Notes: Bold, italic, underline, and strikethrough are available in preview and render path.
+  - Evidence: Puppeteer confirmed all style controls are present; API render passed underline/strikethrough flags.
 
 ## Validation
 
@@ -37,6 +46,12 @@ Last updated: 2026-06-21
 - `node --check web.js && node --check web/app.js` passed.
 - `bash -n convert.sh audio_video.sh mememaker.sh video.sh music.sh lib.sh install.sh test.sh` passed.
 - `git diff --check` passed.
-- Direct API validation checks passed for invalid format and start-after-end.
-- Puppeteer UI verification passed for title, End auto-fill, client-side validation, and Experimental scrub.
-- Browser verification screenshot: `/tmp/mm-wip-scrub.png`.
+- `/api/source-info` returned resolution/FPS/frame metadata for generated MP4/GIF/WebM fixtures.
+- `/api/preview-frame` loaded a scrubbed MP4 frame at `0:01`.
+- Experimental API jobs completed:
+  - `.web-uploads/experimental-input.mp4` -> `videos/experimental-mp4-output.mp4`
+  - `.web-uploads/experimental-input.gif` -> `videos/experimental-webm-output.webm`
+  - `.web-uploads/experimental-input.webm` -> `gifs/experimental-gif-output.gif`
+- `ffprobe` confirmed MP4/H.264 at 12 fps, WebM/VP9 at 10 fps, and GIF at 10 fps.
+- Puppeteer UI verification passed for input label/accept list, output dropdown, removed Load Frame button, Output FPS, editable time/frame controls, metadata display, and style controls.
+- Browser verification screenshot: `/tmp/mm-experimental-wip.png`.
