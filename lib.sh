@@ -52,6 +52,7 @@ check_deps() {
 }
 
 # ── Temp file / dir management with auto-cleanup ─────────────────────────────
+MM_TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mm.XXXXXX")"
 declare -a MM_TEMP_PATHS=()
 
 _make_temp() {
@@ -65,9 +66,9 @@ _make_temp() {
   fi
   local tmp
   if [[ $kind == "dir" ]]; then
-    tmp=$(mktemp -d "${TMPDIR:-/tmp}/mm.XXXXXX${ext}")
+    tmp=$(mktemp -d "$MM_TEMP_ROOT/mm.XXXXXX${ext}")
   else
-    tmp=$(mktemp "${TMPDIR:-/tmp}/mm.XXXXXX${ext}")
+    tmp=$(mktemp "$MM_TEMP_ROOT/mm.XXXXXX${ext}")
   fi
   MM_TEMP_PATHS+=("$tmp")
   printf '%s\n' "$tmp"
@@ -88,11 +89,17 @@ make_temp_name() {
   printf '%s\n' "$p"
 }
 
+register_temp_path() {
+  local p=$1
+  MM_TEMP_PATHS+=("$p")
+}
+
 cleanup() {
   local p
   for p in "${MM_TEMP_PATHS[@]:-}"; do
     [[ -e "$p" ]] && rm -rf "$p"
   done
+  [[ -n "${MM_TEMP_ROOT:-}" && -e "$MM_TEMP_ROOT" ]] && rm -rf "$MM_TEMP_ROOT"
   MM_TEMP_PATHS=()
 }
 

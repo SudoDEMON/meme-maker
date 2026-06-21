@@ -45,7 +45,7 @@ After that you can just run `mememaker`, `video`, `music`, etc. from anywhere.
 - `yt-dlp`
 - `ffmpeg`
 - A decent bold sans-serif font (DejaVu Sans Bold, Noto Sans Bold, etc.)
-- Node.js + npm (only needed for `build.sh` / `capture.js`)
+- Node.js + npm + a Puppeteer browser (only needed for `build.sh` / `capture.js`)
 
 On **Arch-based Linux**:
 ```bash
@@ -89,6 +89,8 @@ All scripts support `-h` / `--help`.
 
 - `FONT=/path/to/font.ttf` — force a specific font in `mememaker`
 - `MM_DEBUG=1` — extra debug output
+- `MM_BUILD_FPS=60` — frame rate for `build.sh` captures and encodes
+- `PUPPETEER_EXECUTABLE_PATH=/path/to/chrome` — use a system Chrome/Chromium for `build.sh`
 
 ## Moving to a new machine
 
