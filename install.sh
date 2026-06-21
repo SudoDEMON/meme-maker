@@ -75,25 +75,20 @@ done
 # --- OS / Package manager detection (always needed, even for doctor) ---
 OS="$(uname -s)"
 PKG_MANAGER=""
-INSTALL_CMD=""
 FONT_PKG=""
 
 detect_linux() {
   if command -v pacman >/dev/null 2>&1; then
     PKG_MANAGER="pacman"
-    INSTALL_CMD="sudo pacman -S --needed"
     FONT_PKG="ttf-dejavu noto-fonts"
   elif command -v apt >/dev/null 2>&1; then
     PKG_MANAGER="apt"
-    INSTALL_CMD="sudo apt update && sudo apt install -y"
     FONT_PKG="fonts-dejavu fonts-noto"
   elif command -v dnf >/dev/null 2>&1; then
     PKG_MANAGER="dnf"
-    INSTALL_CMD="sudo dnf install -y"
     FONT_PKG="dejavu-sans-fonts google-noto-sans-fonts"
   elif command -v zypper >/dev/null 2>&1; then
     PKG_MANAGER="zypper"
-    INSTALL_CMD="sudo zypper install -y"
     FONT_PKG="dejavu-fonts noto-sans-fonts"
   else
     PKG_MANAGER="unknown"
@@ -102,7 +97,6 @@ detect_linux() {
 
 if [[ "$OS" == "Darwin" ]]; then
   PKG_MANAGER="brew"
-  INSTALL_CMD="brew install"
   FONT_PKG=""   # macOS has good fonts built-in
 elif [[ "$OS" == "Linux" ]]; then
   detect_linux
@@ -127,27 +121,55 @@ if [[ "$MODE" != "doctor" ]]; then
 fi
 
 # --- Dependency installation ---
+install_packages() {
+  local pkgs=("$@")
+
+  case "$PKG_MANAGER" in
+    brew)
+      brew install "${pkgs[@]}"
+      ;;
+    pacman)
+      sudo pacman -S --needed "${pkgs[@]}"
+      ;;
+    apt)
+      sudo apt update
+      sudo apt install -y "${pkgs[@]}"
+      ;;
+    dnf)
+      sudo dnf install -y "${pkgs[@]}"
+      ;;
+    zypper)
+      sudo zypper install -y "${pkgs[@]}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 install_deps() {
   local deps=(yt-dlp ffmpeg)
+  local font_deps=()
+  local pkgs=()
+  [[ -n "$FONT_PKG" ]] && read -r -a font_deps <<< "$FONT_PKG"
 
   if [[ "$PKG_MANAGER" == "brew" ]]; then
     info "Installing via Homebrew: ${deps[*]}"
-    $INSTALL_CMD "${deps[@]}" || true
-    # Optional but nice
-    brew install --quiet node 2>/dev/null || true
+    install_packages "${deps[@]}"
+    install_packages node || warn "Node.js install failed; build.sh will need Node.js installed manually"
 
   elif [[ "$PKG_MANAGER" == "pacman" ]]; then
     # cachyOS / Arch — best case
     info "Installing via pacman (cachyOS/Arch)..."
-    $INSTALL_CMD "${deps[@]}" $FONT_PKG base-devel || true
-    # Node for build.sh
-    $INSTALL_CMD nodejs npm 2>/dev/null || true
+    pkgs=("${deps[@]}" "${font_deps[@]}" base-devel)
+    install_packages "${pkgs[@]}"
+    install_packages nodejs npm || warn "Node.js/npm install failed; build.sh will need them installed manually"
 
   elif [[ "$PKG_MANAGER" != "unknown" ]]; then
     info "Installing via $PKG_MANAGER..."
-    $INSTALL_CMD "${deps[@]}" $FONT_PKG 2>/dev/null || true
-    # Node is often separate
-    $INSTALL_CMD nodejs npm 2>/dev/null || true
+    pkgs=("${deps[@]}" "${font_deps[@]}")
+    install_packages "${pkgs[@]}"
+    install_packages nodejs npm || warn "Node.js/npm install failed; build.sh will need them installed manually"
   else
     warn "No supported package manager found."
     echo "Please manually install: yt-dlp, ffmpeg, and a decent sans-serif font (DejaVu, Noto, etc.)"
@@ -199,12 +221,99 @@ link_scripts() {
 }
 
 # --- Optional Node dependencies for build.sh ---
+puppeteer_browser_path() {
+  cd "$REPO_ROOT" && node -e 'try { process.stdout.write(require("puppeteer").executablePath()); } catch (_) {}'
+}
+
+puppeteer_browser_ready() {
+  local browser_path
+  browser_path="$(puppeteer_browser_path)"
+  [[ -n "$browser_path" && -x "$browser_path" ]]
+}
+
+repair_puppeteer_cache_if_needed() {
+  local browser_path
+  local cache_root
+  local browser_dir
+
+  browser_path="$(puppeteer_browser_path)"
+  [[ -n "$browser_path" && ! -x "$browser_path" ]] || return 0
+
+  cache_root="${PUPPETEER_CACHE_DIR:-$HOME/.cache/puppeteer}"
+  case "$browser_path" in
+    "$cache_root"/*)
+      browser_dir="$(dirname "$(dirname "$browser_path")")"
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  if [[ -d "$browser_dir" && "$browser_dir" == "$cache_root"/* ]]; then
+    warn "Removing incomplete Puppeteer browser cache: $browser_dir"
+    rm -rf "$browser_dir"
+  fi
+}
+
+extract_cached_puppeteer_chrome() {
+  local browser_path
+  local browser_dir
+  local browser_parent
+  local browser_kind
+  local cache_family_dir
+  local build_dir
+  local build_id
+  local zip_path
+
+  [[ "$(uname -s)" == "Linux" ]] || return 1
+  command -v unzip >/dev/null 2>&1 || return 1
+
+  browser_path="$(puppeteer_browser_path)"
+  [[ -n "$browser_path" ]] || return 1
+
+  browser_parent="$(dirname "$browser_path")"
+  browser_kind="$(basename "$browser_parent")"
+  browser_dir="$(dirname "$browser_parent")"
+  cache_family_dir="$(dirname "$browser_dir")"
+  build_dir="$(basename "$browser_dir")"
+  build_id="${build_dir#linux-}"
+  zip_path="$cache_family_dir/${build_id}-${browser_kind}.zip"
+
+  [[ -f "$zip_path" ]] || return 1
+
+  warn "Repairing Puppeteer browser from cached zip: $zip_path"
+  rm -rf "$browser_dir"
+  mkdir -p "$browser_dir"
+  unzip -q "$zip_path" -d "$browser_dir"
+  chmod +x "$browser_path" 2>/dev/null || true
+}
+
 install_node_deps() {
   if [[ -f "$REPO_ROOT/package.json" ]]; then
     if command -v npm >/dev/null 2>&1; then
       info "Installing Node dependencies (for build.sh)..."
-      (cd "$REPO_ROOT" && npm install --silent) || warn "npm install had issues — you can run it manually later"
-      success "Node deps installed"
+      if (cd "$REPO_ROOT" && npm install --silent); then
+        success "Node deps installed"
+      else
+        warn "npm install had issues — you can run it manually later"
+        return
+      fi
+
+      info "Installing Puppeteer browser..."
+      repair_puppeteer_cache_if_needed
+      if (cd "$REPO_ROOT" && npx puppeteer browsers install chrome >/dev/null); then
+        if puppeteer_browser_ready; then
+          success "Puppeteer browser installed"
+        elif extract_cached_puppeteer_chrome && puppeteer_browser_ready; then
+          success "Puppeteer browser repaired from cached zip"
+        else
+          warn "Puppeteer browser install finished but no executable was found"
+        fi
+      elif extract_cached_puppeteer_chrome && puppeteer_browser_ready; then
+        success "Puppeteer browser installed"
+      else
+        warn "Puppeteer browser install failed — remove the incomplete browser under ~/.cache/puppeteer, then run: cd $REPO_ROOT && npx puppeteer browsers install chrome"
+      fi
     else
       warn "npm not found — skipping Node dependencies (build.sh will need them)"
     fi
@@ -253,6 +362,50 @@ run_doctor() {
   else
     warn "npm:  MISSING (build.sh will not work)"
     ((issues++))
+  fi
+
+  if command -v node >/dev/null 2>&1 && [[ -f "$REPO_ROOT/package.json" ]]; then
+    local browser_path
+    if browser_path=$(
+      cd "$REPO_ROOT" && node <<'NODE'
+const fs = require('fs');
+let puppeteer;
+
+try {
+  puppeteer = require('puppeteer');
+} catch (err) {
+  console.error(`puppeteer not installed: ${err.message}`);
+  process.exit(1);
+}
+
+let executable;
+try {
+  executable = process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
+} catch (err) {
+  console.error(`could not resolve Puppeteer browser: ${err.message}`);
+  process.exit(1);
+}
+
+if (!fs.existsSync(executable)) {
+  console.error(`missing executable: ${executable}`);
+  process.exit(1);
+}
+
+try {
+  fs.accessSync(executable, fs.constants.X_OK);
+} catch (err) {
+  console.error(`not executable: ${executable}`);
+  process.exit(1);
+}
+
+process.stdout.write(executable);
+NODE
+    ); then
+      success "puppeteer browser: $browser_path"
+    else
+      warn "puppeteer browser: MISSING (run: cd $REPO_ROOT && npx puppeteer browsers install chrome)"
+      ((issues++))
+    fi
   fi
 
   # --- Font detection (source lib.sh from repo) ---
@@ -310,6 +463,7 @@ run_doctor() {
     success "All checks passed. You're good to go."
   else
     warn "$issues issue(s) found. Fix the items marked above."
+    return 1
   fi
   echo
 }
@@ -323,8 +477,11 @@ case "$MODE" in
     link_scripts
     ;;
   doctor)
-    run_doctor
-    exit 0
+    if run_doctor; then
+      exit 0
+    else
+      exit 1
+    fi
     ;;
   full)
     install_deps

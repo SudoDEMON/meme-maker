@@ -53,6 +53,7 @@ yt-dlp -x --audio-format mp3 --audio-quality 0 \
 
 # yt-dlp can occasionally write a sibling with the ext appended; pick the real file if needed.
 if [[ ! -s "$SRC" && -s "$SRC.mp3" ]]; then
+  register_temp_path "$SRC.mp3"
   SRC="$SRC.mp3"
 fi
 [[ -s "$SRC" ]] || die "yt-dlp produced no usable audio for $VID ($START-$END). Try a different video or run with MM_DEBUG=1."

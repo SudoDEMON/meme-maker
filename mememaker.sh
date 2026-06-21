@@ -110,6 +110,7 @@ yt-dlp -f "bv*[ext=mp4]+ba" --merge-output-format mp4 \
 
 # yt-dlp can occasionally write a sibling with the ext appended; pick the real file if needed.
 if [[ ! -s "$CLIP_SRC" && -s "$CLIP_SRC.mp4" ]]; then
+  register_temp_path "$CLIP_SRC.mp4"
   CLIP_SRC="$CLIP_SRC.mp4"
 fi
 [[ -s "$CLIP_SRC" ]] || die "yt-dlp produced no usable media for $ID ($START-$END). Try a different video or run with MM_DEBUG=1."

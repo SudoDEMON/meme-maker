@@ -10,7 +10,19 @@
 # Requires: node (with puppeteer), ffmpeg
 # Environment: MM_DEBUG=1
 
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+resolve_script_dir() {
+  local src="${BASH_SOURCE[0]}"
+  local dir
+  while [[ -L "$src" ]]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" == /* ]] || src="$dir/$src"
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+
+SCRIPT_DIR="$(resolve_script_dir)"
+source "$SCRIPT_DIR/lib.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -lt 3 ]]; then
   cat <<'EOF'
@@ -31,32 +43,47 @@ HTML=$1
 OUT=$2
 SECS=$3
 AUDIO="${4:-}"
+FPS="${MM_BUILD_FPS:-60}"
 
 check_deps node ffmpeg
 
-# 1) capture PNG frames ------------------------------------------------------
-info "Capturing frames from $HTML for ${SECS}s …"
-node capture.js "$HTML" "$SECS"
+[[ -f "$HTML" ]] || die "HTML file not found: $HTML"
+[[ "$SECS" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "Seconds must be a positive number: $SECS"
+[[ "$FPS" =~ ^[0-9]+$ && "$FPS" -gt 0 ]] || die "MM_BUILD_FPS must be a positive integer: $FPS"
+if [[ -n "$AUDIO" ]]; then
+  [[ -f "$AUDIO" ]] || die "Audio file not found: $AUDIO"
+fi
 
-ext=${OUT##*.}
+OUT_DIR="$(dirname "$OUT")"
+[[ "$OUT_DIR" != "." ]] && mkdir -p "$OUT_DIR"
+
+FRAME_DIR="$(make_temp_dir)"
+
+# 1) capture PNG frames ------------------------------------------------------
+info "Capturing frames from $HTML for ${SECS}s at ${FPS}fps..."
+node "$SCRIPT_DIR/capture.js" "$HTML" "$SECS" "$FRAME_DIR" "$FPS"
+
+ext="$(printf '%s' "${OUT##*.}" | tr '[:upper:]' '[:lower:]')"
 
 if [[ "$ext" == "gif" ]]; then
-  info "Encoding transparent GIF…"
-  ffmpeg -y -framerate 15 -i frames/%05d.png \
+  PALETTE="$(make_temp_file --ext png)"
+
+  info "Encoding transparent GIF..."
+  ffmpeg -y -framerate "$FPS" -i "$FRAME_DIR/%05d.png" \
          -filter_complex "[0:v]palettegen=reserve_transparent=1[p]" \
-         -map "[p]" palette.png
-  ffmpeg -y -framerate 15 -i frames/%05d.png -i palette.png \
+         -map "[p]" "$PALETTE"
+  ffmpeg -y -framerate "$FPS" -i "$FRAME_DIR/%05d.png" -i "$PALETTE" \
          -lavfi paletteuse -loop 0 "$OUT"
 
 elif [[ "$ext" == "png" ]]; then
-  info "Saving single frame…"
-  cp frames/00000.png "$OUT"
+  info "Saving single frame..."
+  cp "$FRAME_DIR/00000.png" "$OUT"
 
 else
   # MP4 path
   TMP="$(make_temp_file --ext mp4)"
-  info "Encoding MP4…"
-  ffmpeg -y -framerate 15 -i frames/%05d.png \
+  info "Encoding MP4..."
+  ffmpeg -y -framerate "$FPS" -i "$FRAME_DIR/%05d.png" \
          -c:v libx264 -pix_fmt yuv420p -crf 18 -preset slow \
          "$TMP"
 
