@@ -32,6 +32,14 @@ BOTTOM_FROM_TOP=0
 FONT_FAMILY="${MM_FONT_FAMILY:-}"
 FONT_BOLD=0
 FONT_ITALIC=0
+TOP_FONT_FAMILY="${MM_TOP_FONT_FAMILY:-}"
+BOTTOM_FONT_FAMILY="${MM_BOTTOM_FONT_FAMILY:-}"
+TOP_FONT_SIZE="${MM_TOP_FONT_SIZE:-}"
+BOTTOM_FONT_SIZE="${MM_BOTTOM_FONT_SIZE:-}"
+TOP_FONT_BOLD=0
+TOP_FONT_ITALIC=0
+BOTTOM_FONT_BOLD=0
+BOTTOM_FONT_ITALIC=0
 LOCAL_START="0:00"
 LOCAL_END=""
 NO_TEXT=0
@@ -56,6 +64,14 @@ Options:
   --font-family <name>  Fontconfig family to resolve when no font path is given.
   --bold                Resolve a bold font face when possible.
   --italic              Resolve an italic font face when possible.
+  --top-font-family <name>
+  --top-font-size <px>
+  --top-bold
+  --top-italic
+  --bottom-font-family <name>
+  --bottom-font-size <px>
+  --bottom-bold
+  --bottom-italic
   --width <px>          Output width. Default: 720
   --start <time>        Local caption start time. Default: 0:00
   --end <time>          Local caption end time. Blank means end of media.
@@ -99,6 +115,8 @@ validate_layout_options() {
   [[ "$BOTTOM_Y" =~ ^[0-9]+$ ]] || die "--bottom-y must be a non-negative integer: $BOTTOM_Y"
   [[ "$TOP_X" == "(w-text_w)/2" || "$TOP_X" =~ ^[0-9]+$ ]] || die "--top-x must be a non-negative integer: $TOP_X"
   [[ "$BOTTOM_X" == "(w-text_w)/2" || "$BOTTOM_X" =~ ^[0-9]+$ ]] || die "--bottom-x must be a non-negative integer: $BOTTOM_X"
+  [[ -z "$TOP_FONT_SIZE" || ( "$TOP_FONT_SIZE" =~ ^[0-9]+$ && "$TOP_FONT_SIZE" -gt 0 ) ]] || die "--top-font-size must be a positive integer: $TOP_FONT_SIZE"
+  [[ -z "$BOTTOM_FONT_SIZE" || ( "$BOTTOM_FONT_SIZE" =~ ^[0-9]+$ && "$BOTTOM_FONT_SIZE" -gt 0 ) ]] || die "--bottom-font-size must be a positive integer: $BOTTOM_FONT_SIZE"
   looks_like_time "$LOCAL_START" || die "--start must be a time value: $LOCAL_START"
   [[ -z "$LOCAL_END" ]] || looks_like_time "$LOCAL_END" || die "--end must be blank or a time value: $LOCAL_END"
 }
@@ -130,57 +148,77 @@ append_filter() {
 
 resolve_caption_font() {
   local font_arg=$1
+  resolve_caption_font_for "$font_arg" "$FONT_FAMILY" "$FONT_BOLD" "$FONT_ITALIC"
+}
+
+resolve_caption_font_for() {
+  local font_arg=$1
+  local family=$2
+  local bold=$3
+  local italic=$4
   local font=""
   local style="Regular"
 
-  if [[ -n "$font_arg" || -n "${FONT:-}" || -z "$FONT_FAMILY" ]]; then
+  if [[ -n "$font_arg" || -n "${FONT:-}" || -z "$family" ]]; then
     detect_font "$font_arg"
     return
   fi
 
-  if (( FONT_BOLD && FONT_ITALIC )); then
+  if (( bold && italic )); then
     style="Bold Italic"
-  elif (( FONT_BOLD )); then
+  elif (( bold )); then
     style="Bold"
-  elif (( FONT_ITALIC )); then
+  elif (( italic )); then
     style="Italic"
   fi
 
   if command -v fc-match >/dev/null 2>&1; then
-    font="$(fc-match -f "%{file}\n" "${FONT_FAMILY}:style=${style}" 2>/dev/null | head -1 || true)"
+    font="$(fc-match -f "%{file}\n" "${family}:style=${style}" 2>/dev/null | head -1 || true)"
     if [[ -n "$font" && -f "$font" ]]; then
       printf '%s\n' "$font"
       return
     fi
   fi
 
-  warn "Could not resolve font family '$FONT_FAMILY' with style '$style'; using default font."
-  detect_font ""
+  warn "Could not resolve font family '$family' with style '$style'; using default font."
+  detect_font "$font_arg"
 }
 
 build_caption_filter() {
   local top=$1
   local bottom=$2
   local font_arg=$3
-  local font=""
+  local top_font="" bottom_font=""
   local filter=""
   local txt
   local bottom_y_expr
+  local top_family bottom_family top_size bottom_size
+  local top_bold top_italic bottom_bold bottom_italic
 
   if [[ -z "$top" && -z "$bottom" ]]; then
     printf '\n'
     return
   fi
 
-  font="$(resolve_caption_font "$font_arg")"
-  info "Using font: $font" >&2
+  top_family="${TOP_FONT_FAMILY:-$FONT_FAMILY}"
+  bottom_family="${BOTTOM_FONT_FAMILY:-$FONT_FAMILY}"
+  top_size="${TOP_FONT_SIZE:-$SIZE}"
+  bottom_size="${BOTTOM_FONT_SIZE:-$SIZE}"
+  top_bold=$(( TOP_FONT_BOLD || FONT_BOLD ))
+  top_italic=$(( TOP_FONT_ITALIC || FONT_ITALIC ))
+  bottom_bold=$(( BOTTOM_FONT_BOLD || FONT_BOLD ))
+  bottom_italic=$(( BOTTOM_FONT_ITALIC || FONT_ITALIC ))
 
   if [[ -n "$top" ]]; then
+    top_font="$(resolve_caption_font_for "$font_arg" "$top_family" "$top_bold" "$top_italic")"
+    info "Using top font: $top_font" >&2
     txt="$(write_drawtext_file "$top")"
-    filter="drawtext=fontfile=$font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$SIZE:x=$TOP_X:y=$TOP_Y"
+    filter="drawtext=fontfile=$top_font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$top_size:x=$TOP_X:y=$TOP_Y"
   fi
 
   if [[ -n "$bottom" ]]; then
+    bottom_font="$(resolve_caption_font_for "$font_arg" "$bottom_family" "$bottom_bold" "$bottom_italic")"
+    info "Using bottom font: $bottom_font" >&2
     txt="$(write_drawtext_file "$bottom")"
     if (( BOTTOM_FROM_TOP )); then
       bottom_y_expr="$BOTTOM_Y"
@@ -190,7 +228,7 @@ build_caption_filter() {
     if [[ -n "$filter" ]]; then
       filter+=","
     fi
-    filter+="drawtext=fontfile=$font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$SIZE:x=$BOTTOM_X:y=$bottom_y_expr"
+    filter+="drawtext=fontfile=$bottom_font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$bottom_size:x=$BOTTOM_X:y=$bottom_y_expr"
   fi
 
   printf '%s\n' "$filter"
@@ -619,6 +657,42 @@ while (($#)); do
       ;;
     --italic)
       FONT_ITALIC=1
+      shift
+      ;;
+    --top-font-family)
+      [[ $# -ge 2 ]] || die "--top-font-family requires a value"
+      TOP_FONT_FAMILY="$2"
+      shift 2
+      ;;
+    --top-font-size)
+      [[ $# -ge 2 ]] || die "--top-font-size requires a value"
+      TOP_FONT_SIZE="$2"
+      shift 2
+      ;;
+    --top-bold)
+      TOP_FONT_BOLD=1
+      shift
+      ;;
+    --top-italic)
+      TOP_FONT_ITALIC=1
+      shift
+      ;;
+    --bottom-font-family)
+      [[ $# -ge 2 ]] || die "--bottom-font-family requires a value"
+      BOTTOM_FONT_FAMILY="$2"
+      shift 2
+      ;;
+    --bottom-font-size)
+      [[ $# -ge 2 ]] || die "--bottom-font-size requires a value"
+      BOTTOM_FONT_SIZE="$2"
+      shift 2
+      ;;
+    --bottom-bold)
+      BOTTOM_FONT_BOLD=1
+      shift
+      ;;
+    --bottom-italic)
+      BOTTOM_FONT_ITALIC=1
       shift
       ;;
     --width)

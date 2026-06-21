@@ -23,11 +23,14 @@ const tools = [
       { name: 'outputName', label: 'Output name', span: 'full', placeholder: 'defaults to media ID/name' },
       { name: 'topText', label: 'Top text', type: 'textarea', span: 'field', placeholder: 'BOOM' },
       { name: 'bottomText', label: 'Bottom text', type: 'textarea', span: 'field', placeholder: 'HEADSHOT' },
-      { name: 'fontFamily', label: 'Font face', type: 'select', span: 'quarter', options: [['', 'Auto'], ['Impact', 'Impact'], ['DejaVu Sans', 'DejaVu Sans'], ['Arial', 'Arial'], ['sans-serif', 'Sans'], ['serif', 'Serif'], ['monospace', 'Mono']] },
-      { name: 'fontStyle', label: 'Font style', type: 'select', span: 'quarter', options: [['normal', 'Normal'], ['bold', 'Bold'], ['italic', 'Italic'], ['bold-italic', 'Bold Italic']] },
+      { name: 'topFontFamily', label: 'Top font face', type: 'select', span: 'quarter', options: [['', 'Auto'], ['Impact', 'Impact'], ['DejaVu Sans', 'DejaVu Sans'], ['Arial', 'Arial'], ['sans-serif', 'Sans'], ['serif', 'Serif'], ['monospace', 'Mono']] },
+      { name: 'topFontStyle', label: 'Top style', type: 'select', span: 'quarter', options: [['normal', 'Normal'], ['bold', 'Bold'], ['italic', 'Italic'], ['bold-italic', 'Bold Italic']] },
+      { name: 'topFontSize', label: 'Top size', type: 'number', span: 'quarter', value: '50', min: '1' },
+      { name: 'bottomFontFamily', label: 'Bottom font face', type: 'select', span: 'quarter', options: [['', 'Auto'], ['Impact', 'Impact'], ['DejaVu Sans', 'DejaVu Sans'], ['Arial', 'Arial'], ['sans-serif', 'Sans'], ['serif', 'Serif'], ['monospace', 'Mono']] },
+      { name: 'bottomFontStyle', label: 'Bottom style', type: 'select', span: 'quarter', options: [['normal', 'Normal'], ['bold', 'Bold'], ['italic', 'Italic'], ['bold-italic', 'Bold Italic']] },
+      { name: 'bottomFontSize', label: 'Bottom size', type: 'number', span: 'quarter', value: '50', min: '1' },
       { name: 'topY', label: 'Top y', type: 'number', span: 'quarter', value: '15', min: '0' },
       { name: 'bottomY', label: 'Bottom offset', type: 'number', span: 'quarter', value: '75', min: '0' },
-      { name: 'fontSize', label: 'Font size', type: 'number', span: 'quarter', value: '50', min: '1' },
       { name: 'width', label: 'Width', type: 'number', span: 'quarter', value: '720', min: '1' },
       { name: 'fontPath', label: 'Font path', span: 'full', placeholder: 'Auto-detect if blank', accept: '.ttf,.otf,.ttc,font/*' }
     ]
