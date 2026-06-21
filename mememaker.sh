@@ -16,9 +16,9 @@ Usage:
   ./mememaker.sh <youtube-id> <start> <end> <gif|mp4> "<top text>" "<bottom text>" [custom-name] [font-path]
 
 Examples:
-  ./mememaker.sh Ee4oHnkXRnM 8:33 8:37 gif "TAKE THAT" "YOU 5 TON BEHEMOTH"
-  ./mememaker.sh Ee4oHnkXRnM 8:33 8:37 mp4 "HELLO" "WORLD" /path/to/font.ttf
-  ./mememaker.sh haX-hC7Tfdc 8:22 8:31 gif "RIP" "GRANDMA" "RIPGRANDMAMEME"
+  ./mememaker.sh O0Dgtar0zB4 0:00 0:20 gif " " " " boom_headshot_no_text.gif
+  ./mememaker.sh O0Dgtar0zB4 0:00 0:20 gif "BOOM" "HEADSHOT" boom_headshot_text.gif
+  ./mememaker.sh O0Dgtar0zB4 0:00 0:20 gif "BOOM" "HEADSHOT" boom_headshot_glitch.gif /home/void/Projects/syntos-site/assets/fonts/rubik-glitch-regular.ttf
 
 If a custom-name is given (7th arg), the output will be placed in gifs/ or videos/
 and named <custom-name>.<gif|mp4>. Otherwise the YouTube ID is used as the stem.

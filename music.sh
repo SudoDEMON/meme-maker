@@ -6,7 +6,7 @@
 #        ./music.sh <VIDEO_ID> <start> <end> [output.mp3]
 #
 # Examples:
-#   ./music.sh dQw4w9wgccc 0:42 1:17 bassline.mp3
+#   ./music.sh vXZu0wT1kUg 1:36 1:56 SPVCEODYSSEY_20sec.mp3
 #
 # Environment: MM_DEBUG=1
 
@@ -17,8 +17,11 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -lt 3 ]]; then
 Usage:
   ./music.sh <youtube-id> <start> <end> [output.mp3]
 
+Example:
+  ./music.sh vXZu0wT1kUg 1:36 1:56 SPVCEODYSSEY_20sec.mp3
+
 Extracts audio using yt-dlp + ffmpeg for reliable trimming.
-If no output is given, defaults to audio/<id>.mp3 (creates the dir).
+If no output is given, defaults to Audio/<id>.mp3 (creates the dir).
 Requires: yt-dlp, ffmpeg
 EOF
   exit 0
@@ -29,8 +32,8 @@ START="$2"
 END="$3"
 
 if [[ -z "${4:-}" ]]; then
-  mkdir -p audio
-  OUT="audio/${VID}.mp3"
+  mkdir -p Audio
+  OUT="Audio/${VID}.mp3"
 else
   OUT="$4"
   d="$(dirname "$OUT")"

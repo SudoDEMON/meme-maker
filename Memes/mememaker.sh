@@ -8,10 +8,10 @@
 set -euo pipefail
 
 # ---- variables you can tweak -----------------------------------
-ID="Ee4oHnkXRnM"
-START="8:33"
-END="8:37"
-CAPTION="TAKE THAT 5 TON BAHEMEHOTH"
+ID="O0Dgtar0zB4"
+START="0:00"
+END="0:20"
+CAPTION="BOOM HEADSHOT"
 # ----------------------------------------------------------------
 
 command -v yt-dlp >/dev/null 2>&1 || { echo "Need yt-dlp"; exit 1; }

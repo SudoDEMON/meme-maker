@@ -11,7 +11,7 @@ Now reasonably robust, portable, and easy to install on new machines, especially
 | Script          | Purpose                              | Notes |
 |-----------------|--------------------------------------|-------|
 | `mememaker.sh`  | YouTube slice → captioned GIF or MP4 | Best one. Two-line text support |
-| `video.sh`      | Download clean trimmed video clips   | Fast quality encodes |
+| `video.sh`      | Download clips or combine media+MP3  | Fast quality encodes |
 | `music.sh`      | Extract trimmed audio (mp3)          | Great for stings & samples |
 | `build.sh`      | HTML → video/GIF using puppeteer     | Advanced: capture browser animations |
 | `lib.sh`        | Shared utilities                     | Used by the main scripts |
@@ -60,22 +60,28 @@ brew install yt-dlp ffmpeg node
 ## Usage examples
 
 ```bash
-# Make a meme (outputs to gifs/<id>.gif by default)
-mememaker Ee4oHnkXRnM 8:33 8:37 gif "TAKE THAT" "YOU 5 TON BEHEMOTH"
+# Make a GIF with no visible caption text
+./mememaker.sh O0Dgtar0zB4 0:00 0:20 gif " " " " boom_headshot_no_text.gif
 
-# Make a meme with a custom name (still placed in the right dir + correct ext)
-mememaker haX-hC7Tfdc 8:22 8:31 gif "RIP" "GRANDMA" "RIPGRANDMAMEME"
+# Make a captioned GIF
+./mememaker.sh O0Dgtar0zB4 0:00 0:20 gif "BOOM" "HEADSHOT" boom_headshot_text.gif
 
-# Grab a video clip (defaults to videos/<id>.mp4 if no output given)
-video dQw4w9wgccc 0:42 1:17 funny-bit.mp4
+# Make a captioned GIF with a custom font
+./mememaker.sh O0Dgtar0zB4 0:00 0:20 gif "BOOM" "HEADSHOT" boom_headshot_glitch.gif /path/to/font.ttf
 
-# Grab some audio (defaults to audio/<id>.mp3 if no output given)
-music dQw4w9wgccc 1:05 1:22 bass.mp3
+# Grab the audio clip
+./music.sh vXZu0wT1kUg 1:36 1:56 SPVCEODYSSEY_20sec.mp3
+
+# Grab the video clip
+./video.sh O0Dgtar0zB4 0:00 0:20 boom_headshot_vid.mp4
+
+# Combine a local MP4 with MP3 audio into a new MP4
+./video.sh /path/to/file/meme-maker/boom_headshot_vid.mp4 /path/to/file/meme-maker/SPVCEODYSSEY_20sec.mp3
 ```
 
 - `mememaker` will create `gifs/` or `videos/` as needed and name the file after the video ID (or your custom stem) + the right extension.
-- `video` and `music` do the same with `videos/` and `audio/`.
-- Passing an explicit output filename (as the last argument) gives you full control over path and name.
+- Without an explicit output, `video` and `music` use `videos/` and `Audio/`.
+- Passing an explicit output filename (as the last argument) gives you full control over path and name. `video.sh` accepts custom MP4 names with or without the `.mp4` extension.
 
 All scripts support `-h` / `--help`.
 

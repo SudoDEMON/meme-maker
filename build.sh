@@ -30,7 +30,7 @@ SECONDS=0   # start timer
 HTML=$1
 OUT=$2
 SECS=$3
-AUDIO=$4
+AUDIO="${4:-}"
 
 check_deps node ffmpeg
 
