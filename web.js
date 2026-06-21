@@ -49,6 +49,14 @@ function optional(fields, name) {
   return clean(fields[name]);
 }
 
+function optionalInteger(fields, name, label = name, fallback = '') {
+  const value = optional(fields, name) || fallback;
+  if (value && !/^[0-9]+$/.test(value)) {
+    throw new Error(`${label} must be a non-negative integer.`);
+  }
+  return value;
+}
+
 function safeStem(value, fallback = 'clip') {
   const stem = clean(value).replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
   return stem || fallback;
@@ -186,6 +194,19 @@ function uploadName(originalName) {
   return `${Date.now()}-${crypto.randomUUID()}-${base}${ext}`;
 }
 
+function resolveInputPath(value, label = 'Input') {
+  const raw = clean(value);
+  if (!raw) {
+    throw new Error(`${label} is required.`);
+  }
+
+  const resolved = path.resolve(REPO_ROOT, raw);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`${label} not found: ${raw}`);
+  }
+  return resolved;
+}
+
 function addCaptionOptions(args, fields) {
   const options = [
     ['topY', '--top-y'],
@@ -209,6 +230,47 @@ function validateFormat(format, allowed) {
   if (!allowed.includes(format)) {
     throw new Error(`Format must be one of: ${allowed.join(', ')}.`);
   }
+}
+
+function runProcess(cmd, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, {
+      cwd: options.cwd || REPO_ROOT,
+      env: process.env,
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
+    let stderr = '';
+    child.stderr.on('data', chunk => {
+      stderr += chunk.toString();
+      if (stderr.length > 20000) stderr = stderr.slice(-20000);
+    });
+    child.on('error', reject);
+    child.on('close', code => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(stderr.trim() || `${path.basename(cmd)} exited with ${code}`));
+      }
+    });
+  });
+}
+
+async function createPreviewFrame(input) {
+  const source = resolveInputPath(input, 'Preview input');
+  const ext = path.extname(source).toLowerCase();
+  if (!['.gif', '.mp4', '.webm'].includes(ext)) {
+    throw new Error('Preview input must be a GIF, MP4, or WebM file.');
+  }
+
+  const dir = path.join(UPLOAD_ROOT, 'previews');
+  fs.mkdirSync(dir, { recursive: true });
+  const target = path.join(dir, `${Date.now()}-${crypto.randomUUID()}.png`);
+  await runProcess('ffmpeg', ['-y', '-i', source, '-frames:v', '1', '-update', '1', target]);
+  const rel = path.relative(REPO_ROOT, target).split(path.sep).join('/');
+  return {
+    path: rel,
+    fileUrl: publicFileUrl(rel)
+  };
 }
 
 function buildJob(action, fields) {
@@ -313,6 +375,47 @@ function buildJob(action, fields) {
       const font = optional(data, 'fontPath');
       const args = ['--caption-local'];
       addCaptionOptions(args, data);
+      args.push(input, output, top, bottom);
+      if (font) args.push(font);
+
+      return {
+        cmd: repoPath('mememaker.sh'),
+        args,
+        outputPath: output
+      };
+    }
+
+    case 'experimental-gif-editor': {
+      const input = required(data, 'input', 'Input GIF');
+      const inputStem = safeStem(path.basename(input).replace(/\.[^.]+$/, ''), 'visual-caption');
+      const output = normalizeOutputPath(optional(data, 'output'), {
+        defaultExt: 'gif',
+        allowedExts: ['gif'],
+        fallbackStem: `${inputStem}-visual`,
+        defaultDir: 'gifs'
+      });
+      const top = typeof data.topText === 'string' ? data.topText : '';
+      const bottom = typeof data.bottomText === 'string' ? data.bottomText : '';
+      if (!top && !bottom) {
+        throw new Error('At least one text field is required.');
+      }
+
+      const args = ['--caption-local', '--bottom-from-top'];
+      const topX = optionalInteger(data, 'topX', 'Text 1 x', '0');
+      const topY = optionalInteger(data, 'topY', 'Text 1 y', '0');
+      const bottomX = optionalInteger(data, 'bottomX', 'Text 2 x', '0');
+      const bottomY = optionalInteger(data, 'bottomY', 'Text 2 y', '0');
+      const fontSize = optionalInteger(data, 'fontSize', 'Font size', '50');
+      const width = optionalInteger(data, 'width', 'Width', '720');
+      const fontFamily = optional(data, 'fontFamily');
+      const font = optional(data, 'fontPath');
+
+      args.push('--top-x', topX, '--top-y', topY);
+      args.push('--bottom-x', bottomX, '--bottom-y', bottomY);
+      args.push('--font-size', fontSize, '--width', width);
+      if (fontFamily) args.push('--font-family', fontFamily);
+      if (data.bold) args.push('--bold');
+      if (data.italic) args.push('--italic');
       args.push(input, output, top, bottom);
       if (font) args.push(font);
 
@@ -627,7 +730,7 @@ async function handleRequest(req, res) {
       ok: true,
       repoRoot: REPO_ROOT,
       localOnly: HOST === '127.0.0.1' || HOST === 'localhost',
-      actions: ['download-video', 'download-gif', 'download-audio', 'caption-youtube', 'caption-local', 'add-audio', 'build-html']
+      actions: ['download-video', 'download-gif', 'download-audio', 'caption-youtube', 'caption-local', 'experimental-gif-editor', 'add-audio', 'build-html']
     });
     return;
   }
@@ -640,6 +743,17 @@ async function handleRequest(req, res) {
 
   if (req.method === 'POST' && pathname === '/api/uploads') {
     handleUpload(req, res, url);
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/preview-frame') {
+    try {
+      const body = await readJson(req);
+      const preview = await createPreviewFrame(required(body, 'input', 'Preview input'));
+      sendJson(res, 201, preview);
+    } catch (err) {
+      sendJson(res, 400, { error: err.message });
+    }
     return;
   }
 

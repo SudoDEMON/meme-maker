@@ -269,6 +269,7 @@ h2 {
 }
 
 .primary-button,
+.secondary-button,
 .icon-button {
   border-radius: 8px;
   min-height: 40px;
@@ -291,6 +292,21 @@ h2 {
 .primary-button:hover,
 .primary-button:focus-visible {
   background: var(--accent-strong);
+  outline: none;
+}
+
+.secondary-button {
+  width: 100%;
+  border: 1px solid rgba(23, 147, 209, 0.46);
+  background: rgba(23, 147, 209, 0.12);
+  color: var(--text);
+  font-weight: 850;
+}
+
+.secondary-button:hover,
+.secondary-button:focus-visible {
+  border-color: rgba(72, 191, 255, 0.8);
+  background: rgba(23, 147, 209, 0.2);
   outline: none;
 }
 
@@ -434,6 +450,120 @@ h2 {
   color: var(--error);
 }
 
+.toggle-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-height: 42px;
+}
+
+.toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid rgba(23, 147, 209, 0.36);
+  border-radius: 8px;
+  background: #000000;
+  color: var(--text) !important;
+  cursor: pointer;
+}
+
+.toggle-pill input {
+  width: 15px;
+  min-height: 0;
+  accent-color: var(--accent);
+}
+
+.experimental-editor {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.editor-stage {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(23, 147, 209, 0.24);
+  border-radius: 8px;
+  background: #000000;
+}
+
+.editor-canvas {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(100%, 900px);
+  min-height: 280px;
+  overflow: hidden;
+  border: 1px solid rgba(23, 147, 209, 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.04) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.04) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.04) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.04) 75%),
+    #020406;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+  background-size: 20px 20px;
+}
+
+.editor-canvas.has-preview {
+  min-height: 0;
+}
+
+.editor-canvas img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(65vh, 640px);
+  object-fit: contain;
+}
+
+.editor-placeholder {
+  color: var(--soft);
+  font-family: var(--mono-font);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.editor-text {
+  position: absolute;
+  z-index: 2;
+  max-width: 92%;
+  color: #ffffff;
+  line-height: 1;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  text-shadow:
+    -2px -2px 0 #000000,
+    2px -2px 0 #000000,
+    -2px 2px 0 #000000,
+    2px 2px 0 #000000,
+    0 4px 18px rgba(0, 0, 0, 0.66);
+}
+
+.editor-text:active {
+  cursor: grabbing;
+}
+
+.editor-text:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 4px;
+}
+
+.editor-canvas:not(.has-preview) .editor-text {
+  display: none;
+}
+
 .output-link {
   color: var(--accent-strong);
   font-size: 0.9rem;
@@ -515,6 +645,10 @@ h2 {
     flex: 1;
   }
 
+  .toggle-row {
+    grid-template-columns: 1fr;
+  }
+
   .field,
   .field.third,
   .field.quarter {
@@ -542,6 +676,14 @@ h2 {
 
   .file-button {
     width: 100%;
+  }
+
+  .editor-stage {
+    padding: 10px;
+  }
+
+  .editor-canvas {
+    min-height: 220px;
   }
 
   .job-log {

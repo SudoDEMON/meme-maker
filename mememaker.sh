@@ -26,6 +26,12 @@ WIDTH="${MM_WIDTH:-720}"
 FPS="${MM_FPS:-15}"
 SIZE="${MM_FONT_SIZE:-50}"
 STROKE="${MM_STROKE:-3}"
+TOP_X="${MM_TOP_X:-(w-text_w)/2}"
+BOTTOM_X="${MM_BOTTOM_X:-(w-text_w)/2}"
+BOTTOM_FROM_TOP=0
+FONT_FAMILY="${MM_FONT_FAMILY:-}"
+FONT_BOLD=0
+FONT_ITALIC=0
 NO_TEXT=0
 CAPTION_LOCAL=0
 
@@ -40,8 +46,14 @@ Usage:
 Options:
   --no-text             Skip captions. Also accepts "" "" as empty captions.
   --top-y <px>          Top caption y offset from the top. Default: 15
+  --top-x <px>          Top caption x offset from the left. Default: centered
   --bottom-y <px>       Bottom caption offset from the bottom. Default: 75
+  --bottom-x <px>       Bottom caption x offset from the left. Default: centered
+  --bottom-from-top     Treat --bottom-y as a top-origin y coordinate.
   --font-size <px>      Caption font size. Default: 50
+  --font-family <name>  Fontconfig family to resolve when no font path is given.
+  --bold                Resolve a bold font face when possible.
+  --italic              Resolve an italic font face when possible.
   --width <px>          Output width. Default: 720
   --caption-local       Add captions to a local GIF/MP4/WebM instead of downloading.
   -h, --help            Show this help.
@@ -81,6 +93,8 @@ validate_layout_options() {
   [[ "$STROKE" =~ ^[0-9]+$ ]] || die "MM_STROKE must be a non-negative integer: $STROKE"
   [[ "$TOP_Y" =~ ^[0-9]+$ ]] || die "--top-y must be a non-negative integer: $TOP_Y"
   [[ "$BOTTOM_Y" =~ ^[0-9]+$ ]] || die "--bottom-y must be a non-negative integer: $BOTTOM_Y"
+  [[ "$TOP_X" == "(w-text_w)/2" || "$TOP_X" =~ ^[0-9]+$ ]] || die "--top-x must be a non-negative integer: $TOP_X"
+  [[ "$BOTTOM_X" == "(w-text_w)/2" || "$BOTTOM_X" =~ ^[0-9]+$ ]] || die "--bottom-x must be a non-negative integer: $BOTTOM_X"
 }
 
 validate_type() {
@@ -108,6 +122,36 @@ append_filter() {
   fi
 }
 
+resolve_caption_font() {
+  local font_arg=$1
+  local font=""
+  local style="Regular"
+
+  if [[ -n "$font_arg" || -n "${FONT:-}" || -z "$FONT_FAMILY" ]]; then
+    detect_font "$font_arg"
+    return
+  fi
+
+  if (( FONT_BOLD && FONT_ITALIC )); then
+    style="Bold Italic"
+  elif (( FONT_BOLD )); then
+    style="Bold"
+  elif (( FONT_ITALIC )); then
+    style="Italic"
+  fi
+
+  if command -v fc-match >/dev/null 2>&1; then
+    font="$(fc-match -f "%{file}\n" "${FONT_FAMILY}:style=${style}" 2>/dev/null | head -1 || true)"
+    if [[ -n "$font" && -f "$font" ]]; then
+      printf '%s\n' "$font"
+      return
+    fi
+  fi
+
+  warn "Could not resolve font family '$FONT_FAMILY' with style '$style'; using default font."
+  detect_font ""
+}
+
 build_caption_filter() {
   local top=$1
   local bottom=$2
@@ -115,26 +159,32 @@ build_caption_filter() {
   local font=""
   local filter=""
   local txt
+  local bottom_y_expr
 
   if [[ -z "$top" && -z "$bottom" ]]; then
     printf '\n'
     return
   fi
 
-  font="$(detect_font "$font_arg")"
+  font="$(resolve_caption_font "$font_arg")"
   info "Using font: $font" >&2
 
   if [[ -n "$top" ]]; then
     txt="$(write_drawtext_file "$top")"
-    filter="drawtext=fontfile=$font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$SIZE:x=(w-text_w)/2:y=$TOP_Y"
+    filter="drawtext=fontfile=$font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$SIZE:x=$TOP_X:y=$TOP_Y"
   fi
 
   if [[ -n "$bottom" ]]; then
     txt="$(write_drawtext_file "$bottom")"
+    if (( BOTTOM_FROM_TOP )); then
+      bottom_y_expr="$BOTTOM_Y"
+    else
+      bottom_y_expr="h-$BOTTOM_Y"
+    fi
     if [[ -n "$filter" ]]; then
       filter+=","
     fi
-    filter+="drawtext=fontfile=$font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$SIZE:x=(w-text_w)/2:y=h-$BOTTOM_Y"
+    filter+="drawtext=fontfile=$font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$SIZE:x=$BOTTOM_X:y=$bottom_y_expr"
   fi
 
   printf '%s\n' "$filter"
@@ -519,15 +569,42 @@ while (($#)); do
       TOP_Y="$2"
       shift 2
       ;;
+    --top-x)
+      [[ $# -ge 2 ]] || die "--top-x requires a value"
+      TOP_X="$2"
+      shift 2
+      ;;
     --bottom-y)
       [[ $# -ge 2 ]] || die "--bottom-y requires a value"
       BOTTOM_Y="$2"
       shift 2
       ;;
+    --bottom-x)
+      [[ $# -ge 2 ]] || die "--bottom-x requires a value"
+      BOTTOM_X="$2"
+      shift 2
+      ;;
+    --bottom-from-top)
+      BOTTOM_FROM_TOP=1
+      shift
+      ;;
     --font-size)
       [[ $# -ge 2 ]] || die "--font-size requires a value"
       SIZE="$2"
       shift 2
+      ;;
+    --font-family)
+      [[ $# -ge 2 ]] || die "--font-family requires a value"
+      FONT_FAMILY="$2"
+      shift 2
+      ;;
+    --bold)
+      FONT_BOLD=1
+      shift
+      ;;
+    --italic)
+      FONT_ITALIC=1
+      shift
       ;;
     --width)
       [[ $# -ge 2 ]] || die "--width requires a value"
