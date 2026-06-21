@@ -2,51 +2,29 @@
 
 const tools = [
   {
-    id: 'download-video',
-    title: 'Download Video',
-    icon: 'V',
+    id: 'download-convert',
+    title: 'Download Convert',
     fields: [
-      { name: 'videoId', label: 'YouTube ID or URL', required: true, span: 'third', placeholder: 'https://youtu.be/O0Dgtar0zB4', youtube: true },
+      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'YouTube ID, supported URL, or local media', accept: '.gif,.mp4,.webm,.mp3,.wav,.m4a,.aac,.ogg,image/gif,video/mp4,video/webm,audio/*', sourceProbe: true },
       { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
       { name: 'end', label: 'End', span: 'quarter', placeholder: 'blank = full video' },
-      { name: 'format', label: 'Format', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['webm', 'WebM']] },
-      { name: 'output', label: 'Output', span: 'full', placeholder: 'test-clips' }
+      { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['gif', 'GIF'], ['mp3', 'MP3'], ['webm', 'WebM']] },
+      { name: 'output', label: 'Output name', span: 'full', placeholder: 'defaults to media ID/name' }
     ]
   },
   {
-    id: 'download-gif',
-    title: 'Download GIF',
-    icon: 'G',
+    id: 'text-to-media',
+    title: 'Text to Media',
     fields: [
-      { name: 'videoId', label: 'YouTube ID or URL', required: true, span: 'third', placeholder: 'https://www.youtube.com/watch?v=O0Dgtar0zB4', youtube: true },
+      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'YouTube ID, supported URL, or local GIF/MP4/WebM', accept: '.gif,.mp4,.webm,image/gif,video/mp4,video/webm', sourceProbe: true },
       { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
       { name: 'end', label: 'End', span: 'quarter', placeholder: 'blank = full video' },
-      { name: 'outputName', label: 'Output', span: 'full', placeholder: 'boom_headshot' }
-    ]
-  },
-  {
-    id: 'download-audio',
-    title: 'Download Audio',
-    icon: 'A',
-    fields: [
-      { name: 'videoId', label: 'YouTube ID or URL', required: true, span: 'third', placeholder: 'https://youtu.be/vXZu0wT1kUg', youtube: true },
-      { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
-      { name: 'end', label: 'End', span: 'quarter', placeholder: 'blank = full video' },
-      { name: 'output', label: 'Output', span: 'full', placeholder: 'sting' }
-    ]
-  },
-  {
-    id: 'caption-youtube',
-    title: 'Caption YouTube Clip',
-    icon: 'T',
-    fields: [
-      { name: 'videoId', label: 'YouTube ID or URL', required: true, span: 'third', placeholder: 'https://youtu.be/O0Dgtar0zB4', youtube: true },
-      { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
-      { name: 'end', label: 'End', span: 'quarter', placeholder: 'blank = full video' },
-      { name: 'format', label: 'Format', type: 'select', span: 'quarter', options: [['gif', 'GIF'], ['mp4', 'MP4'], ['webm', 'WebM']] },
+      { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['gif', 'GIF'], ['mp4', 'MP4'], ['webm', 'WebM']] },
+      { name: 'outputName', label: 'Output name', span: 'full', placeholder: 'defaults to media ID/name' },
       { name: 'topText', label: 'Top text', type: 'textarea', span: 'field', placeholder: 'BOOM' },
       { name: 'bottomText', label: 'Bottom text', type: 'textarea', span: 'field', placeholder: 'HEADSHOT' },
-      { name: 'outputName', label: 'Output', span: 'full', placeholder: 'captioned_clip' },
+      { name: 'fontFamily', label: 'Font face', type: 'select', span: 'quarter', options: [['', 'Auto'], ['Impact', 'Impact'], ['DejaVu Sans', 'DejaVu Sans'], ['Arial', 'Arial'], ['sans-serif', 'Sans'], ['serif', 'Serif'], ['monospace', 'Mono']] },
+      { name: 'fontStyle', label: 'Font style', type: 'select', span: 'quarter', options: [['normal', 'Normal'], ['bold', 'Bold'], ['italic', 'Italic'], ['bold-italic', 'Bold Italic']] },
       { name: 'topY', label: 'Top y', type: 'number', span: 'quarter', value: '15', min: '0' },
       { name: 'bottomY', label: 'Bottom offset', type: 'number', span: 'quarter', value: '75', min: '0' },
       { name: 'fontSize', label: 'Font size', type: 'number', span: 'quarter', value: '50', min: '1' },
@@ -55,36 +33,20 @@ const tools = [
     ]
   },
   {
-    id: 'caption-local',
-    title: 'Add Text To Media',
-    icon: 'L',
+    id: 'audio-to-video',
+    title: 'Audio to Video',
     fields: [
-      { name: 'input', label: 'Input media', required: true, span: 'full', placeholder: 'gifs/input.gif', accept: '.gif,.mp4,.webm,image/gif,video/mp4,video/webm' },
-      { name: 'format', label: 'Format', type: 'select', span: 'quarter', options: [['gif', 'GIF'], ['mp4', 'MP4'], ['webm', 'WebM']] },
-      { name: 'output', label: 'Output media', span: 'full', placeholder: 'input-captioned' },
-      { name: 'topText', label: 'Top text', type: 'textarea', span: 'field', placeholder: 'TOP' },
-      { name: 'bottomText', label: 'Bottom text', type: 'textarea', span: 'field', placeholder: 'BOTTOM' },
-      { name: 'topY', label: 'Top y', type: 'number', span: 'quarter', value: '15', min: '0' },
-      { name: 'bottomY', label: 'Bottom offset', type: 'number', span: 'quarter', value: '75', min: '0' },
-      { name: 'fontSize', label: 'Font size', type: 'number', span: 'quarter', value: '50', min: '1' },
-      { name: 'width', label: 'Width', type: 'number', span: 'quarter', value: '720', min: '1' },
-      { name: 'fontPath', label: 'Font path', span: 'full', placeholder: 'Auto-detect if blank', accept: '.ttf,.otf,.ttc,font/*' }
-    ]
-  },
-  {
-    id: 'add-audio',
-    title: 'Add Audio To Video',
-    icon: 'M',
-    fields: [
-      { name: 'media', label: 'Input media', required: true, span: 'full', placeholder: 'videos/clip.mp4', accept: '.gif,.mp4,.webm,image/gif,video/mp4,video/webm' },
+      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'YouTube ID, supported URL, or local GIF/MP4/WebM', accept: '.gif,.mp4,.webm,image/gif,video/mp4,video/webm', sourceProbe: true },
+      { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
+      { name: 'end', label: 'End', span: 'quarter', placeholder: 'blank = full video' },
+      { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['webm', 'WebM']] },
       { name: 'audio', label: 'Input audio', required: true, span: 'full', placeholder: 'Audio/sting.mp3', accept: '.mp3,.wav,.m4a,.aac,.ogg,audio/*' },
-      { name: 'output', label: 'Output', span: 'full', placeholder: 'clip-with-audio' }
+      { name: 'output', label: 'Output name', span: 'full', placeholder: 'defaults to media ID/name' }
     ]
   },
   {
     id: 'build-html',
     title: 'Build HTML Animation',
-    icon: 'B',
     fields: [
       { name: 'html', label: 'HTML file', required: true, span: 'full', placeholder: 'index.html', accept: '.html,.htm,text/html' },
       { name: 'format', label: 'Format', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF'], ['png', 'PNG']] },
@@ -116,6 +78,7 @@ const statusDot = document.querySelector('#statusDot');
 let activeTool = tools[0];
 let activeJobId = null;
 let eventSource = null;
+let sourceProbeTimer = null;
 const editorState = {
   naturalWidth: 0,
   naturalHeight: 0,
@@ -162,6 +125,30 @@ function normalizeYouTubeInput(value) {
   return raw;
 }
 
+function normalizeSourceInput(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') {
+      return url.pathname.split('/').filter(Boolean)[0] || raw;
+    }
+    if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+      const fromQuery = url.searchParams.get('v');
+      if (fromQuery) return fromQuery;
+      const parts = url.pathname.split('/').filter(Boolean);
+      const marker = parts.findIndex(part => ['shorts', 'embed', 'v'].includes(part));
+      if (marker >= 0 && parts[marker + 1]) return parts[marker + 1];
+    }
+  } catch {
+    return raw;
+  }
+
+  return raw;
+}
+
 function renderField(field) {
   const required = field.required ? ' required' : '';
   const value = field.value ? ` value="${escapeHtml(field.value)}"` : '';
@@ -169,6 +156,7 @@ function renderField(field) {
   const min = field.min ? ` min="${escapeHtml(field.min)}"` : '';
   const step = field.step ? ` step="${escapeHtml(field.step)}"` : '';
   const youtube = field.youtube ? ' data-youtube="true"' : '';
+  const sourceProbe = field.sourceProbe ? ' data-source-probe="true"' : '';
   const accept = field.accept ? ` accept="${escapeHtml(field.accept)}"` : '';
 
   if (field.type === 'select') {
@@ -194,7 +182,7 @@ function renderField(field) {
     <div class="${fieldClass(field)}">
       <label for="${field.name}">${escapeHtml(field.label)}</label>
       <div class="${field.accept ? 'file-field' : ''}">
-        <input id="${field.name}" name="${field.name}" type="${field.type || 'text'}"${value}${placeholder}${min}${step}${youtube}${required}>
+        <input id="${field.name}" name="${field.name}" type="${field.type || 'text'}"${value}${placeholder}${min}${step}${youtube}${sourceProbe}${required}>
         ${field.accept ? `
           <label class="file-button">
             Browse
@@ -592,6 +580,9 @@ function formFields() {
   for (const input of toolForm.querySelectorAll('[data-youtube="true"]')) {
     input.value = normalizeYouTubeInput(input.value);
   }
+  for (const input of toolForm.querySelectorAll('[data-source-probe]')) {
+    input.value = normalizeSourceInput(input.value);
+  }
 
   const data = new FormData(toolForm);
   const fields = {};
@@ -606,6 +597,57 @@ function setUploadStatus(fieldName, message, state = '') {
   if (!status) return;
   status.textContent = message;
   status.dataset.state = state;
+}
+
+function outputNameField() {
+  return toolForm.querySelector('[name="output"], [name="outputName"]');
+}
+
+function sourceStatusMessage(info) {
+  const pieces = [];
+  pieces.push(info.kind === 'local' ? 'Local media' : 'Supported source');
+  if (info.durationLabel) pieces.push(info.durationLabel);
+  if (info.extractor) pieces.push(info.extractor);
+  if (info.title) pieces.push(info.title);
+  return pieces.join(' • ');
+}
+
+async function probeSource(input) {
+  if (!input || !input.matches('[data-source-probe]')) return null;
+  input.value = normalizeSourceInput(input.value);
+  const source = input.value.trim();
+  const fieldName = input.name;
+  if (!source) {
+    setUploadStatus(fieldName, '', '');
+    return null;
+  }
+
+  setUploadStatus(fieldName, 'Checking source...', 'busy');
+  const response = await fetch('/api/source-info', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source })
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.error || 'Source is not supported.');
+  }
+
+  setUploadStatus(fieldName, sourceStatusMessage(body), 'ready');
+  const output = outputNameField();
+  if (output && !output.value.trim() && body.defaultStem) {
+    output.value = body.defaultStem;
+  }
+  return body;
+}
+
+function queueSourceProbe(input) {
+  clearTimeout(sourceProbeTimer);
+  sourceProbeTimer = setTimeout(() => {
+    probeSource(input).catch(err => {
+      setUploadStatus(input.name, err.message, 'error');
+    });
+  }, 700);
 }
 
 async function uploadFile(file, targetName) {
@@ -720,6 +762,12 @@ toolForm.addEventListener('blur', event => {
   if (event.target.matches('[data-youtube="true"]')) {
     event.target.value = normalizeYouTubeInput(event.target.value);
   }
+  if (event.target.matches('[data-source-probe]')) {
+    probeSource(event.target).catch(err => {
+      setUploadStatus(event.target.name, err.message, 'error');
+      appendLog(`${err.message}\n`);
+    });
+  }
   if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[name="input"]')) {
     loadExperimentalPreview().catch(err => {
       setUploadStatus('input', err.message, 'error');
@@ -743,6 +791,10 @@ toolForm.addEventListener('change', event => {
   const file = picker.files[0];
   const targetName = picker.dataset.uploadFor;
   uploadFile(file, targetName).then(() => {
+    const targetInput = toolForm.querySelector(`[name="${CSS.escape(targetName)}"]`);
+    if (targetInput && targetInput.matches('[data-source-probe]')) {
+      return probeSource(targetInput);
+    }
     if (activeTool.id === 'experimental-gif-editor' && targetName === 'input') {
       return loadExperimentalPreview();
     }
@@ -758,6 +810,10 @@ toolForm.addEventListener('change', event => {
 });
 
 toolForm.addEventListener('input', event => {
+  if (event.target.matches('[data-source-probe]')) {
+    queueSourceProbe(event.target);
+  }
+
   if (activeTool.id !== 'experimental-gif-editor') return;
   if (event.target.matches('[data-editor-bind]')) {
     syncExperimentalEditor();

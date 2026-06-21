@@ -32,6 +32,8 @@ BOTTOM_FROM_TOP=0
 FONT_FAMILY="${MM_FONT_FAMILY:-}"
 FONT_BOLD=0
 FONT_ITALIC=0
+LOCAL_START="0:00"
+LOCAL_END=""
 NO_TEXT=0
 CAPTION_LOCAL=0
 
@@ -39,8 +41,8 @@ show_mememaker_help() {
   cat <<'EOF'
 Usage:
   ./mememaker.sh
-  ./mememaker.sh [options] <youtube-id> <start> [end] <gif|mp4|webm> "<top text>" "<bottom text>" [custom-name] [font-path]
-  ./mememaker.sh --no-text [options] <youtube-id> <start> [end] <gif|mp4|webm> [custom-name]
+  ./mememaker.sh [options] <youtube-id-or-url> <start> [end] <gif|mp4|webm> "<top text>" "<bottom text>" [custom-name] [font-path]
+  ./mememaker.sh --no-text [options] <youtube-id-or-url> <start> [end] <gif|mp4|webm> [custom-name]
   ./mememaker.sh --caption-local [options] <input.(gif|mp4|webm)> <output.(gif|mp4|webm)> "<top text>" "<bottom text>" [font-path]
 
 Options:
@@ -55,6 +57,8 @@ Options:
   --bold                Resolve a bold font face when possible.
   --italic              Resolve an italic font face when possible.
   --width <px>          Output width. Default: 720
+  --start <time>        Local caption start time. Default: 0:00
+  --end <time>          Local caption end time. Blank means end of media.
   --caption-local       Add captions to a local GIF/MP4/WebM instead of downloading.
   -h, --help            Show this help.
 
@@ -95,6 +99,8 @@ validate_layout_options() {
   [[ "$BOTTOM_Y" =~ ^[0-9]+$ ]] || die "--bottom-y must be a non-negative integer: $BOTTOM_Y"
   [[ "$TOP_X" == "(w-text_w)/2" || "$TOP_X" =~ ^[0-9]+$ ]] || die "--top-x must be a non-negative integer: $TOP_X"
   [[ "$BOTTOM_X" == "(w-text_w)/2" || "$BOTTOM_X" =~ ^[0-9]+$ ]] || die "--bottom-x must be a non-negative integer: $BOTTOM_X"
+  looks_like_time "$LOCAL_START" || die "--start must be a time value: $LOCAL_START"
+  [[ -z "$LOCAL_END" ]] || looks_like_time "$LOCAL_END" || die "--end must be blank or a time value: $LOCAL_END"
 }
 
 validate_type() {
@@ -195,11 +201,21 @@ encode_media() {
   local out=$2
   local type=$3
   local caption_filter=$4
+  local trim_start=${5:-}
+  local trim_end=${6:-}
   local scale_filter="scale=$WIDTH:-2:flags=lanczos"
   local filter
   local palette
+  local -a trim_args=()
 
   ensure_parent_dir "$out"
+
+  if [[ -n "$trim_start" ]] && ! is_zero_time "$trim_start"; then
+    trim_args+=(-ss "$trim_start")
+  fi
+  if [[ -n "$trim_end" && "${trim_end,,}" != "inf" ]]; then
+    trim_args+=(-to "$trim_end")
+  fi
 
   case "$type" in
     gif)
@@ -207,24 +223,24 @@ encode_media() {
       filter="$(append_filter "fps=$FPS,$scale_filter" "$caption_filter")"
 
       info "Generating palette..."
-      ffmpeg -y -i "$input" -vf "$filter,palettegen" -frames:v 1 -update 1 "$palette"
+      ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter,palettegen" -frames:v 1 -update 1 "$palette"
 
       info "Creating GIF..."
-      ffmpeg -y -i "$input" -i "$palette" -lavfi \
+      ffmpeg -y -i "$input" -i "$palette" "${trim_args[@]}" -lavfi \
              "$filter,paletteuse=dither=floyd_steinberg" \
              -loop 0 "$out"
       ;;
     mp4)
       filter="$(append_filter "$scale_filter" "$caption_filter")"
       info "Creating MP4..."
-      ffmpeg -y -i "$input" -vf "$filter" \
+      ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter" \
              -c:v libx264 -crf 23 -preset slow -movflags +faststart \
              -pix_fmt yuv420p "$out"
       ;;
     webm)
       filter="$(append_filter "$scale_filter" "$caption_filter")"
       info "Creating WebM..."
-      ffmpeg -y -i "$input" -vf "$filter" \
+      ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter" \
              -c:v libvpx-vp9 -crf "${MM_WEBM_CRF:-34}" -b:v 0 \
              -deadline good -cpu-used "${MM_WEBM_CPU_USED:-5}" \
              -row-mt 1 -threads 0 -tile-columns "${MM_WEBM_TILE_COLUMNS:-2}" \
@@ -265,10 +281,9 @@ output_for_youtube_type() {
   mkdir -p "$out_dir"
 
   if [[ -n "$custom_name" ]]; then
-    stem="$(basename "$custom_name")"
-    stem="${stem%.*}"
+    stem="$(safe_output_stem "$custom_name")"
   else
-    stem="$id"
+    stem="$(source_output_stem "$id")"
   fi
 
   printf '%s/%s.%s\n' "$out_dir" "$stem" "$type"
@@ -343,18 +358,18 @@ run_youtube_mode() {
   fi
 
   local -a yt_args
-  yt_args=(-f "bv*[ext=mp4]+ba" --merge-output-format mp4 --force-overwrites -o "$clip_src")
+  yt_args=(-f "bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best" --merge-output-format mp4 --force-overwrites -o "$clip_src")
   if needs_yt_dlp_section "$start" "$end"; then
     yt_args+=(--download-sections "$section_range" --force-keyframes-at-cuts)
   fi
-  yt_args+=("https://youtu.be/$id")
+  yt_args+=("$(yt_dlp_source_url "$id")")
   yt-dlp "${yt_args[@]}"
 
   if [[ ! -s "$clip_src" && -s "$clip_src.mp4" ]]; then
     register_temp_path "$clip_src.mp4"
     clip_src="$clip_src.mp4"
   fi
-  [[ -s "$clip_src" ]] || die "yt-dlp produced no usable media for $id ($start-$end_label). Try a different video or run with MM_DEBUG=1."
+  [[ -s "$clip_src" ]] || die "yt-dlp produced no usable media for $id ($start-$end_label). Try a different source or run with MM_DEBUG=1."
 
   info "Preparing clean clip..."
   ffmpeg -y -i "$clip_src" \
@@ -387,7 +402,7 @@ run_caption_local_mode() {
   check_deps ffmpeg
 
   caption_filter="$(build_caption_filter "$top" "$bottom" "$font_arg")"
-  encode_media "$input" "$out" "$type" "$caption_filter"
+  encode_media "$input" "$out" "$type" "$caption_filter" "$LOCAL_START" "$LOCAL_END"
   success "Saved $out"
 }
 
@@ -609,6 +624,16 @@ while (($#)); do
     --width)
       [[ $# -ge 2 ]] || die "--width requires a value"
       WIDTH="$2"
+      shift 2
+      ;;
+    --start)
+      [[ $# -ge 2 ]] || die "--start requires a value"
+      LOCAL_START="$2"
+      shift 2
+      ;;
+    --end)
+      [[ $# -ge 2 ]] || die "--end requires a value"
+      LOCAL_END="$2"
       shift 2
       ;;
     --)

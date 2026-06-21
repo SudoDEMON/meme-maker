@@ -2,8 +2,8 @@
 # video.sh ────────────────────────────────────────────────────────────────────
 # meme-maker — Download video clips, or combine local GIF/MP4/WebM media with audio.
 #
-# Usage: npm run video <VIDEO_ID> <start> [end] [output.(mp4|webm)]
-#        ./video.sh <VIDEO_ID> <start> [end] [output.(mp4|webm)]
+# Usage: npm run video <source> <start> [end] [output.(mp4|webm)]
+#        ./video.sh <source> <start> [end] [output.(mp4|webm)]
 #        ./video.sh combine <input.(gif|mp4|webm)> <audio> [output.(mp4|webm)]
 #
 # Examples:
@@ -17,7 +17,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 show_video_help() {
   cat <<'EOF'
 Usage:
-  ./video.sh <youtube-id> <start> [end] [output.(mp4|webm)]
+  ./video.sh <youtube-id-or-url> <start> [end] [output.(mp4|webm)]
   ./video.sh combine <input.(gif|mp4|webm)> <audio> [output.(mp4|webm)]
   ./video.sh <input.(gif|mp4|webm)> <audio> [output.(mp4|webm)]
 
@@ -27,8 +27,9 @@ Examples:
   ./video.sh /home/void/Projects/meme-maker/boom_headshot_vid.mp4 /home/void/Projects/meme-maker/SPVCEODYSSEY_20sec.mp3
 
 Downloads a trimmed clip using yt-dlp + a clean ffmpeg pass.
+Source can be a YouTube ID, YouTube URL, or another URL supported by yt-dlp.
 Leave end blank/omitted to download from start to the end of the video.
-If no output is given, defaults to videos/<id>.mp4 (creates the dir).
+If no output is given, defaults to videos/<source-stem>.mp4 (creates the dir).
 Combine mode creates an MP4/WebM from local GIF/MP4/WebM video plus audio.
 GIF inputs loop to the audio length; MP4/WebM inputs stop at the shorter stream.
 If combine output is omitted, defaults to videos/<input-stem>-with-audio.mp4.
@@ -170,7 +171,7 @@ if [[ $# -lt 2 || $# -gt 4 ]]; then
   exit 0
 fi
 
-VID="$1"
+SOURCE="$1"
 START="$2"
 END=""
 OUT_ARG=""
@@ -189,7 +190,7 @@ fi
 
 if [[ -z "$OUT_ARG" ]]; then
   mkdir -p videos
-  OUT="videos/${VID}.mp4"
+  OUT="videos/$(source_output_stem "$SOURCE").mp4"
 else
   OUT="$(normalize_video_output "$OUT_ARG")"
 fi
@@ -200,17 +201,17 @@ END_LABEL="$(section_end_label "$END")"
 SECTION_RANGE="$(yt_dlp_section_range "$START" "$END")"
 
 if needs_yt_dlp_section "$START" "$END"; then
-  info "Grabbing $START → $END_LABEL from $VID …"
+  info "Grabbing $START → $END_LABEL from $SOURCE …"
 else
-  info "Grabbing full video from $VID …"
+  info "Grabbing full video from $SOURCE …"
 fi
 
 SRC="$(make_temp_name --ext mp4)"
-YT_ARGS=(-f "bv*[ext=mp4]+ba" --merge-output-format mp4 --force-overwrites -o "$SRC")
+YT_ARGS=(-f "bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best" --merge-output-format mp4 --force-overwrites -o "$SRC")
 if needs_yt_dlp_section "$START" "$END"; then
   YT_ARGS+=(--download-sections "$SECTION_RANGE" --force-keyframes-at-cuts)
 fi
-YT_ARGS+=("https://www.youtube.com/watch?v=$VID")
+YT_ARGS+=("$(yt_dlp_source_url "$SOURCE")")
 yt-dlp "${YT_ARGS[@]}"
 
 # yt-dlp can occasionally write a sibling with the ext appended; pick the real file if needed.
@@ -218,7 +219,7 @@ if [[ ! -s "$SRC" && -s "$SRC.mp4" ]]; then
   register_temp_path "$SRC.mp4"
   SRC="$SRC.mp4"
 fi
-[[ -s "$SRC" ]] || die "yt-dlp produced no usable media for $VID ($START-$END_LABEL). Try a different video or run with MM_DEBUG=1."
+[[ -s "$SRC" ]] || die "yt-dlp produced no usable media for $SOURCE ($START-$END_LABEL). Try a different source or run with MM_DEBUG=1."
 
 # Clean re-encode of the already-sectioned clip (yt-dlp already extracted
 # the requested range; the resulting file is short with timeline ~0).
