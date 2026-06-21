@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>meme-maker</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="site-header" aria-label="Primary">
+      <div class="brand" aria-label="MM Meme Maker">
+        <span class="brand-mark">MM</span>
+        <span>Meme Maker</span>
+      </div>
+      <nav class="tool-tabs" id="toolTabs" aria-label="Workflows"></nav>
+    </header>
+
+    <main class="workspace">
+      <header class="workspace-head">
+        <div>
+          <p class="eyebrow" id="toolKicker">Current Page Name</p>
+          <h1 id="toolTitle">Download Video</h1>
+        </div>
+        <div class="server-status">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="serverStatus">Checking server</span>
+        </div>
+      </header>
+
+      <section class="form-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Settings</p>
+            <h2>Settings</h2>
+          </div>
+          <div class="head-actions">
+            <button class="icon-button" type="button" id="cancelButton" title="Cancel job" disabled>x</button>
+            <button class="primary-button" type="submit" form="toolForm" id="runButton">
+              <span aria-hidden="true">></span>
+              <span>Run</span>
+            </button>
+          </div>
+        </div>
+        <form id="toolForm" autocomplete="off"></form>
+      </section>
+
+      <section class="job-panel" aria-live="polite">
+        <div class="job-head">
+          <div>
+            <p class="eyebrow">Terminal Window</p>
+            <h2>Terminal Window <span id="jobStatus">Ready</span></h2>
+          </div>
+          <div class="output-actions">
+            <a id="outputLink" class="output-link" href="#" target="_blank" rel="noopener" hidden>Open output</a>
+            <a id="downloadLink" class="output-link" href="#" hidden>Download output</a>
+          </div>
+        </div>
+        <pre id="jobLog" class="job-log"></pre>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

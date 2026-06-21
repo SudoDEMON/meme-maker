@@ -104,7 +104,17 @@ cleanup() {
 }
 
 # Register cleanup on common exit paths
-trap cleanup EXIT INT TERM HUP
+on_signal() {
+  local code=$1
+  cleanup
+  trap - EXIT INT TERM HUP
+  exit "$code"
+}
+
+trap cleanup EXIT
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+trap 'on_signal 129' HUP
 
 # ── Font detection (cross-platform, respects FONT env + CLI override) ────────
 detect_font() {
@@ -245,7 +255,48 @@ EOF
 
 # ── Small utility: check if a string looks like a time ───────────────────────
 looks_like_time() {
-  [[ "$1" =~ ^([0-9]+:)?[0-9]+:[0-9]+$ || "$1" =~ ^[0-9]+:[0-9]+$ || "$1" =~ ^[0-9]+$ ]]
+  [[ "$1" =~ ^([0-9]+:)?[0-9]+:[0-9]+$ || "$1" =~ ^[0-9]+:[0-9]+$ || "$1" =~ ^[0-9]+$ || "${1,,}" == "inf" ]]
+}
+
+section_end_or_inf() {
+  local end=${1:-}
+  if [[ -z "$end" || "${end,,}" == "inf" ]]; then
+    printf 'inf\n'
+  else
+    printf '%s\n' "$end"
+  fi
+}
+
+section_end_label() {
+  local end=${1:-}
+  if [[ -z "$end" || "${end,,}" == "inf" ]]; then
+    printf 'end\n'
+  else
+    printf '%s\n' "$end"
+  fi
+}
+
+is_zero_time() {
+  case "${1:-}" in
+    0|0:0|0:00|00:00|0:0:0|0:00:00|00:00:00) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+needs_yt_dlp_section() {
+  local start=${1:-}
+  local end
+  end="$(section_end_or_inf "${2:-}")"
+
+  [[ "$end" != "inf" ]] || ! is_zero_time "$start"
+}
+
+yt_dlp_section_range() {
+  local start=${1:-}
+  local end
+  [[ -n "$start" ]] || die "Start time is required."
+  end="$(section_end_or_inf "${2:-}")"
+  printf '*%s-%s\n' "$start" "$end"
 }
 
 # Export nothing by default — these are meant to be sourced and used directly.

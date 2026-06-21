@@ -3,6 +3,7 @@
   "version": "1.0.2",
   "scripts": {
     "test": "./test.sh",
+    "web": "node web.js",
     "build": "./build.sh",
     "music": "./music.sh",
     "video": "./video.sh",

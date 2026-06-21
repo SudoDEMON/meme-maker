@@ -6,6 +6,7 @@ node_modules/
 
 # Generated / temp
 frames/
+.web-uploads/
 *.tmp
 __*.mp4
 __*.gif
