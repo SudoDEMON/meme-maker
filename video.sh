@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # video.sh ────────────────────────────────────────────────────────────────────
-# meme-maker — Download video clips, or combine local GIF/MP4 media with MP3.
+# meme-maker — Download video clips, or combine local GIF/MP4/WebM media with audio.
 #
-# Usage: npm run video <VIDEO_ID> <start> <end> [output.mp4]
-#        ./video.sh <VIDEO_ID> <start> <end> [output.mp4]
-#        ./video.sh combine <input.(gif|mp4)> <audio.mp3> [output.mp4]
+# Usage: npm run video <VIDEO_ID> <start> [end] [output.(mp4|webm)]
+#        ./video.sh <VIDEO_ID> <start> [end] [output.(mp4|webm)]
+#        ./video.sh combine <input.(gif|mp4|webm)> <audio> [output.(mp4|webm)]
 #
 # Examples:
 #   ./video.sh O0Dgtar0zB4 0:00 0:20 boom_headshot_vid.mp4
@@ -17,20 +17,22 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 show_video_help() {
   cat <<'EOF'
 Usage:
-  ./video.sh <youtube-id> <start> <end> [output.mp4]
-  ./video.sh combine <input.(gif|mp4)> <audio.mp3> [output.mp4]
-  ./video.sh <input.(gif|mp4)> <audio.mp3> [output.mp4]
+  ./video.sh <youtube-id> <start> [end] [output.(mp4|webm)]
+  ./video.sh combine <input.(gif|mp4|webm)> <audio> [output.(mp4|webm)]
+  ./video.sh <input.(gif|mp4|webm)> <audio> [output.(mp4|webm)]
 
 Examples:
   ./video.sh O0Dgtar0zB4 0:00 0:20 boom_headshot_vid.mp4
+  ./video.sh O0Dgtar0zB4 0:00 boom_headshot_full.mp4
   ./video.sh /home/void/Projects/meme-maker/boom_headshot_vid.mp4 /home/void/Projects/meme-maker/SPVCEODYSSEY_20sec.mp3
 
 Downloads a trimmed clip using yt-dlp + a clean ffmpeg pass.
+Leave end blank/omitted to download from start to the end of the video.
 If no output is given, defaults to videos/<id>.mp4 (creates the dir).
-Combine mode creates an MP4 from local GIF/MP4 video plus an MP3.
-GIF inputs loop to the audio length; MP4 inputs stop at the shorter stream.
+Combine mode creates an MP4/WebM from local GIF/MP4/WebM video plus audio.
+GIF inputs loop to the audio length; MP4/WebM inputs stop at the shorter stream.
 If combine output is omitted, defaults to videos/<input-stem>-with-audio.mp4.
-Custom output names may be given with or without .mp4.
+Custom output names may be given with or without .mp4/.webm.
 Requires: yt-dlp, ffmpeg for downloads; ffmpeg/ffprobe for combine mode.
 EOF
 }
@@ -42,14 +44,24 @@ ensure_parent_dir() {
   [[ "$d" != "." ]] && mkdir -p "$d"
 }
 
-normalize_mp4_output() {
+normalize_video_output() {
   local out=$1
   case "$out" in
-    *.mp4|*.MP4) ;;
+    *.mp4|*.MP4|*.webm|*.WEBM) ;;
     *) out="${out}.mp4" ;;
   esac
   ensure_parent_dir "$out"
   printf '%s\n' "$out"
+}
+
+video_ext() {
+  local out=$1
+  local ext
+  ext="$(printf '%s' "${out##*.}" | tr '[:upper:]' '[:lower:]')"
+  case "$ext" in
+    webm) printf 'webm\n' ;;
+    *) printf 'mp4\n' ;;
+  esac
 }
 
 default_combined_output() {
@@ -70,19 +82,22 @@ combine_media_audio() {
   [[ -f "$audio" ]] || die "Input audio not found: $audio"
 
   case "$media" in
-    *.gif|*.GIF|*.mp4|*.MP4) ;;
-    *) die "Combine input must be a .gif or .mp4 file: $media" ;;
+    *.gif|*.GIF|*.mp4|*.MP4|*.webm|*.WEBM) ;;
+    *) die "Combine input must be a .gif, .mp4, or .webm file: $media" ;;
   esac
 
   if [[ -z "$out" ]]; then
     out="$(default_combined_output "$media")"
   else
-    out="$(normalize_mp4_output "$out")"
+    out="$(normalize_video_output "$out")"
   fi
 
   check_deps ffmpeg ffprobe
 
   info "Combining $media + $audio → $out …"
+
+  local ext
+  ext="$(video_ext "$out")"
 
   case "$media" in
     *.gif|*.GIF)
@@ -90,21 +105,44 @@ combine_media_audio() {
       audio_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$audio")"
       [[ -n "$audio_duration" ]] || die "Could not determine audio duration: $audio"
 
-      ffmpeg -y -stream_loop -1 -i "$media" -i "$audio" \
-             -t "$audio_duration" \
-             -map 0:v:0 -map 1:a:0 \
-             -vf "fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-             -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
-             -c:a aac -b:a 192k -movflags +faststart \
-             "$out"
+      if [[ "$ext" == "webm" ]]; then
+        ffmpeg -y -stream_loop -1 -i "$media" -i "$audio" \
+               -t "$audio_duration" \
+               -map 0:v:0 -map 1:a:0 \
+               -vf "fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+               -c:v libvpx-vp9 -crf "${MM_WEBM_CRF:-34}" -b:v 0 \
+               -deadline good -cpu-used "${MM_WEBM_CPU_USED:-5}" \
+               -row-mt 1 -threads 0 -tile-columns "${MM_WEBM_TILE_COLUMNS:-2}" \
+               -pix_fmt yuv420p -c:a libopus -b:a 128k \
+               "$out"
+      else
+        ffmpeg -y -stream_loop -1 -i "$media" -i "$audio" \
+               -t "$audio_duration" \
+               -map 0:v:0 -map 1:a:0 \
+               -vf "fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+               -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
+               -c:a aac -b:a 192k -movflags +faststart \
+               "$out"
+      fi
       ;;
-    *.mp4|*.MP4)
-      ffmpeg -y -i "$media" -i "$audio" \
-             -map 0:v:0 -map 1:a:0 \
-             -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-             -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
-             -c:a aac -b:a 192k -shortest -movflags +faststart \
-             "$out"
+    *.mp4|*.MP4|*.webm|*.WEBM)
+      if [[ "$ext" == "webm" ]]; then
+        ffmpeg -y -i "$media" -i "$audio" \
+               -map 0:v:0 -map 1:a:0 \
+               -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+               -c:v libvpx-vp9 -crf "${MM_WEBM_CRF:-34}" -b:v 0 \
+               -deadline good -cpu-used "${MM_WEBM_CPU_USED:-5}" \
+               -row-mt 1 -threads 0 -tile-columns "${MM_WEBM_TILE_COLUMNS:-2}" \
+               -pix_fmt yuv420p -c:a libopus -b:a 128k -shortest \
+               "$out"
+      else
+        ffmpeg -y -i "$media" -i "$audio" \
+               -map 0:v:0 -map 1:a:0 \
+               -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+               -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
+               -c:a aac -b:a 192k -shortest -movflags +faststart \
+               "$out"
+      fi
       ;;
   esac
 
@@ -117,7 +155,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -eq 0 ]]; then
 fi
 
 if [[ "${1:-}" == "combine" ]]; then
-  [[ $# -ge 3 && $# -le 4 ]] || die "Usage: ./video.sh combine <input.(gif|mp4)> <audio.mp3> [output.mp4]"
+  [[ $# -ge 3 && $# -le 4 ]] || die "Usage: ./video.sh combine <input.(gif|mp4|webm)> <audio> [output.(mp4|webm)]"
   combine_media_audio "$2" "$3" "${4:-}"
   exit 0
 fi
@@ -127,46 +165,77 @@ if [[ $# -ge 2 && $# -le 3 && -f "$1" && -f "$2" ]]; then
   exit 0
 fi
 
-if [[ $# -lt 3 ]]; then
+if [[ $# -lt 2 || $# -gt 4 ]]; then
   show_video_help
   exit 0
 fi
 
 VID="$1"
 START="$2"
-END="$3"
+END=""
+OUT_ARG=""
 
-if [[ -z "${4:-}" ]]; then
+if [[ $# -ge 3 ]]; then
+  if [[ $# -eq 3 ]] && ! looks_like_time "$3"; then
+    OUT_ARG="$3"
+  else
+    END="${3:-}"
+  fi
+fi
+
+if [[ $# -eq 4 ]]; then
+  OUT_ARG="$4"
+fi
+
+if [[ -z "$OUT_ARG" ]]; then
   mkdir -p videos
   OUT="videos/${VID}.mp4"
 else
-  OUT="$(normalize_mp4_output "$4")"
+  OUT="$(normalize_video_output "$OUT_ARG")"
 fi
 
 check_deps yt-dlp ffmpeg
 
-info "Grabbing $START → $END from $VID …"
+END_LABEL="$(section_end_label "$END")"
+SECTION_RANGE="$(yt_dlp_section_range "$START" "$END")"
+
+if needs_yt_dlp_section "$START" "$END"; then
+  info "Grabbing $START → $END_LABEL from $VID …"
+else
+  info "Grabbing full video from $VID …"
+fi
 
 SRC="$(make_temp_name --ext mp4)"
-yt-dlp -f "bv*[ext=mp4]+ba" --merge-output-format mp4 \
-       --download-sections "*$START-$END" \
-       --force-keyframes-at-cuts \
-       --force-overwrites \
-       -o "$SRC" "https://www.youtube.com/watch?v=$VID"
+YT_ARGS=(-f "bv*[ext=mp4]+ba" --merge-output-format mp4 --force-overwrites -o "$SRC")
+if needs_yt_dlp_section "$START" "$END"; then
+  YT_ARGS+=(--download-sections "$SECTION_RANGE" --force-keyframes-at-cuts)
+fi
+YT_ARGS+=("https://www.youtube.com/watch?v=$VID")
+yt-dlp "${YT_ARGS[@]}"
 
 # yt-dlp can occasionally write a sibling with the ext appended; pick the real file if needed.
 if [[ ! -s "$SRC" && -s "$SRC.mp4" ]]; then
   register_temp_path "$SRC.mp4"
   SRC="$SRC.mp4"
 fi
-[[ -s "$SRC" ]] || die "yt-dlp produced no usable media for $VID ($START-$END). Try a different video or run with MM_DEBUG=1."
+[[ -s "$SRC" ]] || die "yt-dlp produced no usable media for $VID ($START-$END_LABEL). Try a different video or run with MM_DEBUG=1."
 
 # Clean re-encode of the already-sectioned clip (yt-dlp already extracted
 # the requested range; the resulting file is short with timeline ~0).
-ffmpeg -y -i "$SRC" \
-       -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-       -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
-       -c:a aac -b:a 192k -movflags +faststart \
-       "$OUT"
+if [[ "$(video_ext "$OUT")" == "webm" ]]; then
+  ffmpeg -y -i "$SRC" \
+         -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+         -c:v libvpx-vp9 -crf "${MM_WEBM_CRF:-34}" -b:v 0 \
+         -deadline good -cpu-used "${MM_WEBM_CPU_USED:-5}" \
+         -row-mt 1 -threads 0 -tile-columns "${MM_WEBM_TILE_COLUMNS:-2}" \
+         -pix_fmt yuv420p -c:a libopus -b:a 128k \
+         "$OUT"
+else
+  ffmpeg -y -i "$SRC" \
+         -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+         -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
+         -c:a aac -b:a 192k -movflags +faststart \
+         "$OUT"
+fi
 
 success "Saved $OUT"
