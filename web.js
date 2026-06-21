@@ -63,6 +63,55 @@ function optionalInteger(fields, name, label = name, fallback = '') {
   return value;
 }
 
+function parseTimeValue(value, { allowBlank = false, allowInf = false, label = 'Time' } = {}) {
+  const raw = clean(value);
+  if (!raw) {
+    if (allowBlank) return null;
+    throw new Error(`${label} is required.`);
+  }
+  if (allowInf && raw.toLowerCase() === 'inf') return Infinity;
+  if (!/^[0-9]+(?::[0-9]+){0,2}(?:\.[0-9]+)?$/.test(raw)) {
+    throw new Error(`${label} must be seconds, MM:SS, HH:MM:SS, or ${allowInf ? 'inf' : 'a valid time'}.`);
+  }
+
+  const parts = raw.split(':');
+  const seconds = Number(parts[parts.length - 1]);
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    throw new Error(`${label} must be a valid time.`);
+  }
+  if (parts.length > 1 && seconds >= 60) {
+    throw new Error(`${label} seconds must be less than 60 when using colon format.`);
+  }
+
+  let total = seconds;
+  if (parts.length >= 2) {
+    const minutes = Number(parts[parts.length - 2]);
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes >= 60) {
+      throw new Error(`${label} minutes must be a whole number less than 60 when using colon format.`);
+    }
+    total += minutes * 60;
+  }
+  if (parts.length === 3) {
+    const hours = Number(parts[0]);
+    if (!Number.isInteger(hours) || hours < 0) {
+      throw new Error(`${label} hours must be a non-negative whole number.`);
+    }
+    total += hours * 3600;
+  }
+  return total;
+}
+
+function validateTimeRange(fields, { requireStart = true, allowBlankEnd = true } = {}) {
+  const start = requireStart ? required(fields, 'start', 'Start time') : optional(fields, 'start');
+  const end = optional(fields, 'end');
+  const startSeconds = parseTimeValue(start, { allowBlank: !requireStart, label: 'Start time' });
+  const endSeconds = parseTimeValue(end, { allowBlank: allowBlankEnd, allowInf: true, label: 'End time' });
+  if (startSeconds !== null && endSeconds !== null && endSeconds !== Infinity && startSeconds >= endSeconds) {
+    throw new Error('Start time must be before end time.');
+  }
+  return { start: start || '0:00', end };
+}
+
 function detectDefaultFont() {
   if (defaultFontCache) return defaultFontCache;
 
@@ -533,17 +582,21 @@ async function sourceInfo(value) {
   };
 }
 
-async function createPreviewFrame(input) {
+async function createPreviewFrame(input, time = '0') {
   const source = resolveInputPath(input, 'Preview input');
   const ext = path.extname(source).toLowerCase();
   if (!['.gif', '.mp4', '.webm'].includes(ext)) {
     throw new Error('Preview input must be a GIF, MP4, or WebM file.');
   }
+  const seconds = parseTimeValue(time, { allowBlank: true, label: 'Preview time' }) || 0;
 
   const dir = path.join(UPLOAD_ROOT, 'previews');
   fs.mkdirSync(dir, { recursive: true });
   const target = path.join(dir, `${Date.now()}-${crypto.randomUUID()}.png`);
-  await runProcess('ffmpeg', ['-y', '-i', source, '-frames:v', '1', '-update', '1', target]);
+  const args = ['-y'];
+  if (seconds > 0) args.push('-ss', String(seconds));
+  args.push('-i', source, '-frames:v', '1', '-update', '1', target);
+  await runProcess('ffmpeg', args);
   const rel = path.relative(REPO_ROOT, target).split(path.sep).join('/');
   return {
     path: rel,
@@ -558,8 +611,7 @@ function buildJob(action, fields) {
     case 'download-convert': {
       const sourceRaw = required(data, 'source', 'Source');
       const source = resolveJobSource(sourceRaw);
-      const start = optional(data, 'start') || '0:00';
-      const end = optional(data, 'end');
+      const { start, end } = validateTimeRange(data);
       const format = optional(data, 'format') || 'mp4';
       validateFormat(format, ['gif', 'mp3', 'mp4', 'webm']);
       const output = normalizeMediaOutput(optional(data, 'output'), format, sourceFallbackStem(sourceRaw));
@@ -573,8 +625,7 @@ function buildJob(action, fields) {
 
     case 'download-video': {
       const id = youtubeId(required(data, 'videoId', 'YouTube ID'));
-      const start = required(data, 'start', 'Start time');
-      const end = optional(data, 'end');
+      const { start, end } = validateTimeRange(data);
       const format = optional(data, 'format') || 'mp4';
       validateFormat(format, ['mp4', 'webm']);
       const output = normalizeVideoOutput(optional(data, 'output'), safeStem(id), format);
@@ -588,8 +639,7 @@ function buildJob(action, fields) {
 
     case 'download-gif': {
       const id = youtubeId(required(data, 'videoId', 'YouTube ID'));
-      const start = required(data, 'start', 'Start time');
-      const end = optional(data, 'end');
+      const { start, end } = validateTimeRange(data);
       const output = normalizeOutputPath(optional(data, 'outputName'), {
         defaultExt: 'gif',
         allowedExts: ['gif'],
@@ -607,8 +657,7 @@ function buildJob(action, fields) {
 
     case 'download-audio': {
       const id = youtubeId(required(data, 'videoId', 'YouTube ID'));
-      const start = required(data, 'start', 'Start time');
-      const end = optional(data, 'end');
+      const { start, end } = validateTimeRange(data);
       const output = normalizeOutputPath(optional(data, 'output'), {
         defaultExt: 'mp3',
         allowedExts: ['mp3'],
@@ -627,8 +676,7 @@ function buildJob(action, fields) {
       const sourceRaw = required(data, 'source', 'Source');
       const source = resolveJobSource(sourceRaw);
       const sourceIsLocal = isLocalSource(sourceRaw);
-      const start = optional(data, 'start') || '0:00';
-      const end = optional(data, 'end');
+      const { start, end } = validateTimeRange(data);
       const format = optional(data, 'format') || 'gif';
       validateFormat(format, ['gif', 'mp4', 'webm']);
       const fallbackStem = `${sourceFallbackStem(sourceRaw)}-captioned`;
@@ -666,8 +714,7 @@ function buildJob(action, fields) {
 
     case 'caption-youtube': {
       const id = youtubeId(required(data, 'videoId', 'YouTube ID'));
-      const start = required(data, 'start', 'Start time');
-      const end = optional(data, 'end');
+      const { start, end } = validateTimeRange(data);
       const format = optional(data, 'format') || 'gif';
       validateFormat(format, ['gif', 'mp4', 'webm']);
 
@@ -766,8 +813,7 @@ function buildJob(action, fields) {
     case 'audio-to-video': {
       const sourceRaw = required(data, 'source', 'Source');
       const source = resolveJobSource(sourceRaw);
-      const start = optional(data, 'start') || '0:00';
-      const end = optional(data, 'end');
+      const { start, end } = validateTimeRange(data);
       const audio = resolveInputPath(required(data, 'audio', 'Input audio'), 'Input audio');
       const format = optional(data, 'format') || 'mp4';
       validateFormat(format, ['mp4', 'webm']);
@@ -1116,7 +1162,7 @@ async function handleRequest(req, res) {
   if (req.method === 'POST' && pathname === '/api/preview-frame') {
     try {
       const body = await readJson(req);
-      const preview = await createPreviewFrame(required(body, 'input', 'Preview input'));
+      const preview = await createPreviewFrame(required(body, 'input', 'Preview input'), optional(body, 'time'));
       sendJson(res, 201, preview);
     } catch (err) {
       sendJson(res, 400, { error: err.message });
