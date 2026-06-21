@@ -72,6 +72,11 @@ const tools = [
     ]
   },
   {
+    id: 'experimental-gif-editor',
+    title: 'Experimental',
+    experimental: true
+  },
+  {
     id: 'add-audio',
     title: 'Add Audio To Video',
     icon: 'M',
@@ -111,6 +116,11 @@ const statusDot = document.querySelector('#statusDot');
 let activeTool = tools[0];
 let activeJobId = null;
 let eventSource = null;
+const editorState = {
+  naturalWidth: 0,
+  naturalHeight: 0,
+  dragging: null
+};
 const maxLogChars = 80000;
 
 function escapeHtml(value) {
@@ -203,11 +213,101 @@ function renderTabs() {
   `).join('');
 }
 
+function renderExperimentalEditor() {
+  return `
+    <div class="experimental-editor">
+      <div class="field-grid">
+        <div class="field full">
+          <label for="input">Input GIF</label>
+          <div class="file-field">
+            <input id="input" name="input" type="text" placeholder="gifs/input.gif" required>
+            <label class="file-button">
+              Browse
+              <input type="file" data-upload-for="input" accept=".gif,image/gif">
+            </label>
+          </div>
+          <div class="field-status" data-upload-status-for="input"></div>
+        </div>
+        <div class="field full">
+          <label for="output">Output GIF</label>
+          <input id="output" name="output" type="text" placeholder="input-visual">
+        </div>
+        <div class="field">
+          <label for="topText">Text 1</label>
+          <textarea id="topText" name="topText" data-editor-bind="topText">TOP</textarea>
+        </div>
+        <div class="field">
+          <label for="bottomText">Text 2</label>
+          <textarea id="bottomText" name="bottomText" data-editor-bind="bottomText">BOTTOM</textarea>
+        </div>
+        <div class="field quarter">
+          <label for="fontFamily">Font face</label>
+          <select id="fontFamily" name="fontFamily" data-editor-style>
+            <option value="sans-serif">Sans</option>
+            <option value="serif">Serif</option>
+            <option value="monospace">Mono</option>
+            <option value="Impact">Impact</option>
+            <option value="DejaVu Sans">DejaVu Sans</option>
+          </select>
+        </div>
+        <div class="field quarter">
+          <label for="fontSize">Size</label>
+          <input id="fontSize" name="fontSize" type="number" min="1" value="50" data-editor-style>
+        </div>
+        <div class="field quarter">
+          <label>Style</label>
+          <div class="toggle-row">
+            <label class="toggle-pill"><input type="checkbox" name="bold" value="1" checked data-editor-style> Bold</label>
+            <label class="toggle-pill"><input type="checkbox" name="italic" value="1" data-editor-style> Italic</label>
+          </div>
+        </div>
+        <div class="field quarter">
+          <label for="previewButton">Preview</label>
+          <button class="secondary-button" type="button" id="previewButton">Load Frame</button>
+        </div>
+        <div class="field full">
+          <label for="fontPath">Font path</label>
+          <div class="file-field">
+            <input id="fontPath" name="fontPath" type="text" placeholder="Auto-resolve if blank">
+            <label class="file-button">
+              Browse
+              <input type="file" data-upload-for="fontPath" accept=".ttf,.otf,.ttc,font/*">
+            </label>
+          </div>
+          <div class="field-status" data-upload-status-for="fontPath"></div>
+        </div>
+      </div>
+
+      <input type="hidden" name="topX" value="0">
+      <input type="hidden" name="topY" value="0">
+      <input type="hidden" name="bottomX" value="0">
+      <input type="hidden" name="bottomY" value="0">
+      <input type="hidden" name="width" value="720">
+
+      <div class="editor-stage">
+        <div class="editor-canvas" id="editorCanvas">
+          <div class="editor-placeholder" id="editorPlaceholder">No Preview</div>
+          <img id="editorPreview" alt="" hidden>
+          <div class="editor-text editor-text-one" data-editor-text="topText" tabindex="0">TOP</div>
+          <div class="editor-text editor-text-two" data-editor-text="bottomText" tabindex="0">BOTTOM</div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderTool(tool) {
   activeTool = tool;
   toolTitle.textContent = tool.title;
   toolKicker.textContent = 'Current Page Name';
-  toolForm.innerHTML = `<div class="field-grid">${tool.fields.map(renderField).join('')}</div>`;
+  if (tool.experimental) {
+    editorState.naturalWidth = 0;
+    editorState.naturalHeight = 0;
+    editorState.dragging = null;
+    toolForm.innerHTML = renderExperimentalEditor();
+    syncExperimentalEditor();
+  } else {
+    toolForm.innerHTML = `<div class="field-grid">${tool.fields.map(renderField).join('')}</div>`;
+  }
   renderTabs();
 }
 
@@ -252,6 +352,186 @@ function showOutput(fileUrl, outputPath, downloadUrl) {
   }
 }
 
+function cssFontFamily(value) {
+  switch (value) {
+    case 'serif':
+      return 'Georgia, "Times New Roman", serif';
+    case 'monospace':
+      return '"SFMono-Regular", Consolas, "Liberation Mono", monospace';
+    case 'Impact':
+      return 'Impact, Haettenschweiler, "Arial Black", sans-serif';
+    case 'DejaVu Sans':
+      return '"DejaVu Sans", Arial, sans-serif';
+    case 'sans-serif':
+    default:
+      return 'Inter, Arial, sans-serif';
+  }
+}
+
+function editorElements() {
+  return {
+    canvas: toolForm.querySelector('#editorCanvas'),
+    preview: toolForm.querySelector('#editorPreview'),
+    placeholder: toolForm.querySelector('#editorPlaceholder'),
+    top: toolForm.querySelector('[data-editor-text="topText"]'),
+    bottom: toolForm.querySelector('[data-editor-text="bottomText"]')
+  };
+}
+
+function editorScale() {
+  const { preview } = editorElements();
+  if (!preview || !editorState.naturalWidth || !editorState.naturalHeight) {
+    return { x: 1, y: 1 };
+  }
+  return {
+    x: preview.clientWidth / editorState.naturalWidth,
+    y: preview.clientHeight / editorState.naturalHeight
+  };
+}
+
+function experimentalField(name) {
+  return toolForm.querySelector(`[name="${CSS.escape(name)}"]`);
+}
+
+function setExperimentalPosition(textName, x, y) {
+  const overlay = toolForm.querySelector(`[data-editor-text="${CSS.escape(textName)}"]`);
+  const xInput = experimentalField(textName === 'topText' ? 'topX' : 'bottomX');
+  const yInput = experimentalField(textName === 'topText' ? 'topY' : 'bottomY');
+  if (!overlay || !xInput || !yInput) return;
+
+  const scale = editorScale();
+  const naturalX = Math.max(0, Math.round(x));
+  const naturalY = Math.max(0, Math.round(y));
+  xInput.value = String(naturalX);
+  yInput.value = String(naturalY);
+  overlay.style.left = `${naturalX * scale.x}px`;
+  overlay.style.top = `${naturalY * scale.y}px`;
+}
+
+function refreshExperimentalPositions() {
+  setExperimentalPosition('topText', Number(experimentalField('topX')?.value || 0), Number(experimentalField('topY')?.value || 0));
+  setExperimentalPosition('bottomText', Number(experimentalField('bottomX')?.value || 0), Number(experimentalField('bottomY')?.value || 0));
+}
+
+function applyExperimentalStyles() {
+  if (activeTool.id !== 'experimental-gif-editor') return;
+  const family = experimentalField('fontFamily')?.value || 'sans-serif';
+  const size = Math.max(1, Number(experimentalField('fontSize')?.value || 50));
+  const scale = editorScale();
+  const displaySize = Math.max(8, Math.round(size * scale.x));
+  const isBold = Boolean(experimentalField('bold')?.checked);
+  const isItalic = Boolean(experimentalField('italic')?.checked);
+
+  for (const overlay of toolForm.querySelectorAll('.editor-text')) {
+    overlay.style.fontFamily = cssFontFamily(family);
+    overlay.style.fontSize = `${displaySize}px`;
+    overlay.style.fontWeight = isBold ? '900' : '500';
+    overlay.style.fontStyle = isItalic ? 'italic' : 'normal';
+  }
+}
+
+function syncExperimentalEditor() {
+  if (activeTool.id !== 'experimental-gif-editor') return;
+  const { top, bottom } = editorElements();
+  const topText = experimentalField('topText')?.value || '';
+  const bottomText = experimentalField('bottomText')?.value || '';
+  if (top) {
+    top.textContent = topText;
+    top.hidden = !topText;
+  }
+  if (bottom) {
+    bottom.textContent = bottomText;
+    bottom.hidden = !bottomText;
+  }
+  applyExperimentalStyles();
+  refreshExperimentalPositions();
+}
+
+function initializeExperimentalPositions() {
+  const sizeInput = experimentalField('fontSize');
+  if (sizeInput && sizeInput.value === '50') {
+    const autoSize = Math.min(64, Math.max(18, Math.round((editorState.naturalWidth || 720) / 14)));
+    sizeInput.value = String(autoSize);
+  }
+  const size = Math.max(1, Number(sizeInput?.value || 50));
+  const inset = Math.max(12, Math.round(editorState.naturalWidth * 0.05));
+  const topY = Math.max(0, Math.round(editorState.naturalHeight * 0.08));
+  const bottomY = Math.max(0, editorState.naturalHeight - size - Math.round(editorState.naturalHeight * 0.12));
+  experimentalField('width').value = String(editorState.naturalWidth || 720);
+  setExperimentalPosition('topText', inset, topY);
+  setExperimentalPosition('bottomText', inset, bottomY);
+  applyExperimentalStyles();
+}
+
+async function loadExperimentalPreview() {
+  if (activeTool.id !== 'experimental-gif-editor') return;
+  const input = experimentalField('input')?.value.trim();
+  if (!input) return;
+
+  setUploadStatus('input', 'Loading preview...', 'busy');
+  const response = await fetch('/api/preview-frame', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input })
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.error || 'Could not load preview.');
+  }
+
+  const { canvas, preview, placeholder } = editorElements();
+  if (!canvas || !preview) return;
+  await new Promise((resolve, reject) => {
+    preview.onload = resolve;
+    preview.onerror = () => reject(new Error('Could not render preview frame.'));
+    preview.src = `${body.fileUrl}?t=${Date.now()}`;
+  });
+
+  editorState.naturalWidth = preview.naturalWidth;
+  editorState.naturalHeight = preview.naturalHeight;
+  preview.hidden = false;
+  if (placeholder) placeholder.hidden = true;
+  canvas.classList.add('has-preview');
+  canvas.style.aspectRatio = `${editorState.naturalWidth} / ${editorState.naturalHeight}`;
+  initializeExperimentalPositions();
+  setUploadStatus('input', `Preview ${editorState.naturalWidth}x${editorState.naturalHeight}`, 'ready');
+}
+
+function beginExperimentalDrag(event) {
+  const overlay = event.target.closest('.editor-text');
+  if (activeTool.id !== 'experimental-gif-editor' || !overlay || overlay.hidden) return;
+  const { canvas } = editorElements();
+  if (!canvas || !editorState.naturalWidth || !editorState.naturalHeight) return;
+
+  const overlayRect = overlay.getBoundingClientRect();
+  editorState.dragging = {
+    name: overlay.dataset.editorText,
+    offsetX: event.clientX - overlayRect.left,
+    offsetY: event.clientY - overlayRect.top
+  };
+  overlay.setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+
+function moveExperimentalDrag(event) {
+  if (!editorState.dragging || activeTool.id !== 'experimental-gif-editor') return;
+  const { canvas } = editorElements();
+  const overlay = toolForm.querySelector(`[data-editor-text="${CSS.escape(editorState.dragging.name)}"]`);
+  if (!canvas || !overlay) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const scale = editorScale();
+  const maxX = Math.max(0, rect.width - overlay.offsetWidth);
+  const maxY = Math.max(0, rect.height - overlay.offsetHeight);
+  const cssX = Math.min(maxX, Math.max(0, event.clientX - rect.left - editorState.dragging.offsetX));
+  const cssY = Math.min(maxY, Math.max(0, event.clientY - rect.top - editorState.dragging.offsetY));
+  setExperimentalPosition(editorState.dragging.name, cssX / scale.x, cssY / scale.y);
+}
+
+function endExperimentalDrag() {
+  editorState.dragging = null;
+}
+
 function formFields() {
   for (const input of toolForm.querySelectorAll('[data-youtube="true"]')) {
     input.value = normalizeYouTubeInput(input.value);
@@ -290,6 +570,7 @@ async function uploadFile(file, targetName) {
 
   input.value = body.path;
   setUploadStatus(targetName, `Selected ${body.path}`, 'ready');
+  return body;
 }
 
 async function createJob() {
@@ -382,19 +663,60 @@ toolForm.addEventListener('blur', event => {
   if (event.target.matches('[data-youtube="true"]')) {
     event.target.value = normalizeYouTubeInput(event.target.value);
   }
+  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[name="input"]')) {
+    loadExperimentalPreview().catch(err => {
+      setUploadStatus('input', err.message, 'error');
+      appendLog(`${err.message}\n`);
+    });
+  }
 }, true);
 
 toolForm.addEventListener('change', event => {
   const picker = event.target.closest('[data-upload-for]');
-  if (!picker || !picker.files || picker.files.length === 0) return;
+  if (!picker || !picker.files || picker.files.length === 0) {
+    if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[data-editor-style]')) {
+      applyExperimentalStyles();
+    }
+    return;
+  }
 
   const file = picker.files[0];
   const targetName = picker.dataset.uploadFor;
-  uploadFile(file, targetName).catch(err => {
+  uploadFile(file, targetName).then(() => {
+    if (activeTool.id === 'experimental-gif-editor' && targetName === 'input') {
+      return loadExperimentalPreview();
+    }
+    return null;
+  }).catch(err => {
     setUploadStatus(targetName, err.message, 'error');
     appendLog(`${err.message}\n`);
   });
 });
+
+toolForm.addEventListener('input', event => {
+  if (activeTool.id !== 'experimental-gif-editor') return;
+  if (event.target.matches('[data-editor-bind]')) {
+    syncExperimentalEditor();
+  }
+  if (event.target.matches('[data-editor-style]')) {
+    applyExperimentalStyles();
+    refreshExperimentalPositions();
+  }
+});
+
+toolForm.addEventListener('click', event => {
+  if (activeTool.id === 'experimental-gif-editor' && event.target.closest('#previewButton')) {
+    loadExperimentalPreview().catch(err => {
+      setUploadStatus('input', err.message, 'error');
+      appendLog(`${err.message}\n`);
+    });
+  }
+});
+
+toolForm.addEventListener('pointerdown', beginExperimentalDrag);
+toolForm.addEventListener('pointermove', moveExperimentalDrag);
+toolForm.addEventListener('pointerup', endExperimentalDrag);
+toolForm.addEventListener('pointercancel', endExperimentalDrag);
 
 toolForm.addEventListener('submit', event => {
   event.preventDefault();

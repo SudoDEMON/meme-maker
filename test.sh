@@ -29,6 +29,8 @@ node --check web/app.js
 ./video.sh --help | grep -q '\[end\]'
 ./music.sh --help | grep -q '\[end\]'
 ./mememaker.sh --help | grep -q '\[end\]'
+./mememaker.sh --help | grep -q -- '--top-x'
+./mememaker.sh --help | grep -q -- '--font-family'
 
 bash -c 'set -euo pipefail; source ./lib.sh; [[ "$(yt_dlp_section_range "0:00" "")" == "*0:00-inf" ]]; [[ "$(section_end_label "")" == "end" ]]; ! needs_yt_dlp_section "0:00" ""; needs_yt_dlp_section "0:10" ""; looks_like_time inf'
 

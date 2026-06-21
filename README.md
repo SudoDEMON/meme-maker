@@ -62,6 +62,11 @@ Local file pickers upload the selected file into `.web-uploads/` and then use
 that uploaded local path for GIF/video/audio/font/HTML inputs. This keeps the
 browser security model intact while still giving a normal file chooser.
 
+The **Experimental** tab includes a visual GIF text editor. It loads the first
+frame of a selected GIF, lets you drag two text fields into place, and passes
+the resulting x/y coordinates plus font face, bold, italic, and size settings
+to the local caption renderer.
+
 ```bash
 MM_WEB_PORT=3001 npm run web
 ```
@@ -145,6 +150,7 @@ brew install yt-dlp ffmpeg node
 - Caption text can be blank: use `"" ""` or `--no-text`. In the interactive menu, leave text prompts blank for no text.
 - End time can be blank/omitted to use everything from the start time through the end of the video. Internally this uses yt-dlp's `inf` section end when a section is still needed.
 - `--top-y`, `--bottom-y`, `--font-size`, and `--width` control caption placement and output sizing.
+- `--top-x`, `--bottom-x`, `--bottom-from-top`, `--font-family`, `--bold`, and `--italic` are available for the experimental visual editor and advanced caption placement.
 
 All scripts support `-h` / `--help`.
 
