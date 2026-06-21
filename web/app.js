@@ -72,11 +72,6 @@ const tools = [
     ]
   },
   {
-    id: 'experimental-gif-editor',
-    title: 'Experimental',
-    experimental: true
-  },
-  {
     id: 'add-audio',
     title: 'Add Audio To Video',
     icon: 'M',
@@ -97,6 +92,11 @@ const tools = [
       { name: 'seconds', label: 'Seconds', type: 'number', required: true, span: 'quarter', value: '5', min: '0.1', step: '0.1' },
       { name: 'audio', label: 'Audio file', span: 'full', placeholder: 'Audio/sting.mp3', accept: '.mp3,.wav,.m4a,.aac,.ogg,audio/*' }
     ]
+  },
+  {
+    id: 'experimental-gif-editor',
+    title: 'Experimental',
+    experimental: true
   }
 ];
 
@@ -268,7 +268,7 @@ function renderExperimentalEditor() {
         <div class="field full">
           <label for="fontPath">Font path</label>
           <div class="file-field">
-            <input id="fontPath" name="fontPath" type="text" placeholder="Auto-resolve if blank">
+            <input id="fontPath" name="fontPath" type="text" placeholder="Auto-resolve if blank" data-editor-font-path>
             <label class="file-button">
               Browse
               <input type="file" data-upload-for="fontPath" accept=".ttf,.otf,.ttc,font/*">
@@ -368,6 +368,49 @@ function cssFontFamily(value) {
   }
 }
 
+function cssString(value) {
+  return String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '').replaceAll('\r', '');
+}
+
+function repoFileUrl(value) {
+  const rel = String(value || '').trim().replaceAll('\\', '/');
+  if (!rel || rel.startsWith('/') || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(rel)) return '';
+  const parts = rel.split('/').filter(Boolean);
+  if (parts.some(part => part === '.' || part === '..')) return '';
+  return `/files/${parts.map(encodeURIComponent).join('/')}`;
+}
+
+function experimentalFontUrl() {
+  const input = experimentalField('fontPath');
+  if (!input) return '';
+  return input.dataset.fileUrl || repoFileUrl(input.value);
+}
+
+function ensureExperimentalFontFace(url) {
+  const id = 'experimentalFontFace';
+  let style = document.querySelector(`#${id}`);
+  if (!url) {
+    if (style) style.textContent = '';
+    return '';
+  }
+
+  if (!style) {
+    style = document.createElement('style');
+    style.id = id;
+    document.head.appendChild(style);
+  }
+
+  style.textContent = `
+    @font-face {
+      font-family: "MM Experimental Font";
+      src: url("${cssString(url)}");
+      font-weight: 100 900;
+      font-style: normal;
+    }
+  `;
+  return '"MM Experimental Font"';
+}
+
 function editorElements() {
   return {
     canvas: toolForm.querySelector('#editorCanvas'),
@@ -421,9 +464,12 @@ function applyExperimentalStyles() {
   const displaySize = Math.max(8, Math.round(size * scale.x));
   const isBold = Boolean(experimentalField('bold')?.checked);
   const isItalic = Boolean(experimentalField('italic')?.checked);
+  const customFont = ensureExperimentalFontFace(experimentalFontUrl());
+  const fallbackFont = cssFontFamily(family);
+  const previewFont = customFont ? `${customFont}, ${fallbackFont}` : fallbackFont;
 
   for (const overlay of toolForm.querySelectorAll('.editor-text')) {
-    overlay.style.fontFamily = cssFontFamily(family);
+    overlay.style.fontFamily = previewFont;
     overlay.style.fontSize = `${displaySize}px`;
     overlay.style.fontWeight = isBold ? '900' : '500';
     overlay.style.fontStyle = isItalic ? 'italic' : 'normal';
@@ -571,6 +617,7 @@ async function uploadFile(file, targetName) {
   }
 
   input.value = body.path;
+  input.dataset.fileUrl = body.fileUrl || '';
   setUploadStatus(targetName, `Selected ${body.path}`, 'ready');
   return body;
 }
@@ -671,6 +718,9 @@ toolForm.addEventListener('blur', event => {
       appendLog(`${err.message}\n`);
     });
   }
+  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[data-editor-font-path]')) {
+    applyExperimentalStyles();
+  }
 }, true);
 
 toolForm.addEventListener('change', event => {
@@ -688,6 +738,10 @@ toolForm.addEventListener('change', event => {
     if (activeTool.id === 'experimental-gif-editor' && targetName === 'input') {
       return loadExperimentalPreview();
     }
+    if (activeTool.id === 'experimental-gif-editor' && targetName === 'fontPath') {
+      applyExperimentalStyles();
+      refreshExperimentalPositions();
+    }
     return null;
   }).catch(err => {
     setUploadStatus(targetName, err.message, 'error');
@@ -701,6 +755,11 @@ toolForm.addEventListener('input', event => {
     syncExperimentalEditor();
   }
   if (event.target.matches('[data-editor-style]')) {
+    applyExperimentalStyles();
+    refreshExperimentalPositions();
+  }
+  if (event.target.matches('[data-editor-font-path]')) {
+    event.target.dataset.fileUrl = '';
     applyExperimentalStyles();
     refreshExperimentalPositions();
   }
