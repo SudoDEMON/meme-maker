@@ -386,13 +386,15 @@ function buildJob(action, fields) {
     }
 
     case 'experimental-gif-editor': {
-      const input = required(data, 'input', 'Input GIF');
+      const input = required(data, 'input', 'Input media');
+      const requestedFormat = optional(data, 'format') || 'gif';
+      validateFormat(requestedFormat, ['gif', 'mp4', 'webm']);
       const inputStem = safeStem(path.basename(input).replace(/\.[^.]+$/, ''), 'visual-caption');
       const output = normalizeOutputPath(optional(data, 'output'), {
-        defaultExt: 'gif',
-        allowedExts: ['gif'],
+        defaultExt: requestedFormat,
+        allowedExts: ['gif', 'mp4', 'webm'],
         fallbackStem: `${inputStem}-visual`,
-        defaultDir: 'gifs'
+        defaultDir: requestedFormat === 'gif' ? 'gifs' : 'videos'
       });
       const top = typeof data.topText === 'string' ? data.topText : '';
       const bottom = typeof data.bottomText === 'string' ? data.bottomText : '';

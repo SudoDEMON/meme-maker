@@ -218,19 +218,27 @@ function renderExperimentalEditor() {
     <div class="experimental-editor">
       <div class="field-grid">
         <div class="field full">
-          <label for="input">Input GIF</label>
+          <label for="input">Input media</label>
           <div class="file-field">
-            <input id="input" name="input" type="text" placeholder="gifs/input.gif" required>
+            <input id="input" name="input" type="text" placeholder="gifs/input.gif or videos/input.mp4" required>
             <label class="file-button">
               Browse
-              <input type="file" data-upload-for="input" accept=".gif,image/gif">
+              <input type="file" data-upload-for="input" accept=".gif,.mp4,.webm,image/gif,video/mp4,video/webm">
             </label>
           </div>
           <div class="field-status" data-upload-status-for="input"></div>
         </div>
-        <div class="field full">
-          <label for="output">Output GIF</label>
+        <div class="field">
+          <label for="output">Output name</label>
           <input id="output" name="output" type="text" placeholder="input-visual">
+        </div>
+        <div class="field">
+          <label for="format">Output format</label>
+          <select id="format" name="format">
+            <option value="gif">GIF</option>
+            <option value="mp4">MP4</option>
+            <option value="webm">WebM</option>
+          </select>
         </div>
         <div class="field">
           <label for="topText">Text 1</label>

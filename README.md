@@ -62,11 +62,12 @@ Local file pickers upload the selected file into `.web-uploads/` and then use
 that uploaded local path for GIF/video/audio/font/HTML inputs. This keeps the
 browser security model intact while still giving a normal file chooser.
 
-The **Experimental** tab includes a visual GIF text editor. It loads the first
-frame of a selected GIF, lets you drag two text fields into place, and passes
-the resulting x/y coordinates plus font face, bold, italic, and size settings
-to the local caption renderer. If you browse or enter a repo-local font path,
-the preview text loads that font file in the browser before rendering.
+The **Experimental** tab includes a visual media text editor. It loads the first
+frame of a selected GIF, MP4, or WebM, lets you drag two text fields into place,
+and can render the result as GIF, MP4, or WebM. It passes the resulting x/y
+coordinates plus font face, bold, italic, and size settings to the local caption
+renderer. If you browse or enter a repo-local font path, the preview text loads
+that font file in the browser before rendering.
 
 ```bash
 MM_WEB_PORT=3001 npm run web
