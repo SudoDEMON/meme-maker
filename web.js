@@ -586,6 +586,7 @@ function runCapture(cmd, args, options = {}) {
 }
 
 function durationLabel(seconds) {
+  if (seconds === null || seconds === undefined || seconds === '') return '';
   const value = Number(seconds);
   if (!Number.isFinite(value) || value < 0) return '';
   const total = Math.round(value);
@@ -596,6 +597,14 @@ function durationLabel(seconds) {
     return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   }
   return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
 }
 
 function parseFrameRate(value) {
@@ -613,6 +622,14 @@ function parseFrameRate(value) {
   return Number.isFinite(rate) && rate > 0 ? rate : null;
 }
 
+function positiveNumber(...values) {
+  for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number) && number > 0) return number;
+  }
+  return null;
+}
+
 function mediaFrameInfo(streams, duration) {
   const video = (Array.isArray(streams) ? streams : []).find(stream => stream.codec_type === 'video') || {};
   const fps = parseFrameRate(video.avg_frame_rate) || parseFrameRate(video.r_frame_rate);
@@ -625,6 +642,70 @@ function mediaFrameInfo(streams, duration) {
     fps,
     frameCount: Number.isFinite(frameCount) && frameCount > 0 ? frameCount : null
   };
+}
+
+function remoteMediaInfo(info, raw, remote) {
+  const formats = Array.isArray(info.formats) ? info.formats : [];
+  const bestVideo = formats
+    .filter(format => positiveNumber(format.width) && positiveNumber(format.height))
+    .sort((a, b) => {
+      const aArea = positiveNumber(a.width) * positiveNumber(a.height);
+      const bArea = positiveNumber(b.width) * positiveNumber(b.height);
+      return bArea - aArea;
+    })[0] || {};
+  const duration = positiveNumber(info.duration);
+  const fps = positiveNumber(info.fps, bestVideo.fps);
+  const width = positiveNumber(info.width, bestVideo.width);
+  const height = positiveNumber(info.height, bestVideo.height);
+  const frameCount = duration && fps ? Math.round(duration * fps) : null;
+  const defaultStem = safeStem(info.id || info.display_id || info.title || sourceFallbackStem(raw), sourceFallbackStem(raw));
+
+  return {
+    ok: true,
+    supported: true,
+    kind: 'remote',
+    source: remote,
+    title: info.title || '',
+    id: info.id || info.display_id || extractYouTubeId(raw) || '',
+    extractor: info.extractor_key || info.extractor || '',
+    webpageUrl: info.webpage_url || remote,
+    defaultStem,
+    duration,
+    durationLabel: durationLabel(duration),
+    width,
+    height,
+    fps,
+    frameCount: Number.isFinite(frameCount) && frameCount > 0 ? frameCount : null
+  };
+}
+
+function remoteFrameMetadata(value) {
+  const remote = ytDlpProbeSource(value);
+  const probe = spawnSync('yt-dlp', [
+    '--dump-single-json',
+    '--skip-download',
+    '--no-warnings',
+    '--no-playlist',
+    remote
+  ], {
+    encoding: 'utf8',
+    timeout: SOURCE_INFO_TIMEOUT_MS
+  });
+  if (probe.error || probe.status !== 0) {
+    return {};
+  }
+
+  try {
+    const info = remoteMediaInfo(JSON.parse(probe.stdout || '{}'), value, remote);
+    return {
+      width: info.width,
+      height: info.height,
+      fps: info.fps,
+      frameCount: info.frameCount
+    };
+  } catch {
+    return {};
+  }
 }
 
 async function sourceInfo(value) {
@@ -669,48 +750,68 @@ async function sourceInfo(value) {
     remote
   ]);
   const info = JSON.parse(stdout || '{}');
-  const duration = Number(info.duration);
-  const fps = Number(info.fps);
-  const width = Number(info.width);
-  const height = Number(info.height);
-  const frameCount = Number.isFinite(duration) && Number.isFinite(fps) && fps > 0
-    ? Math.round(duration * fps)
-    : null;
-  const defaultStem = safeStem(info.id || info.display_id || info.title || sourceFallbackStem(raw), sourceFallbackStem(raw));
-  return {
-    ok: true,
-    supported: true,
-    kind: 'remote',
-    source: remote,
-    title: info.title || '',
-    id: info.id || info.display_id || extractYouTubeId(raw) || '',
-    extractor: info.extractor_key || info.extractor || '',
-    webpageUrl: info.webpage_url || remote,
-    defaultStem,
-    duration: Number.isFinite(duration) ? duration : null,
-    durationLabel: durationLabel(duration),
-    width: Number.isFinite(width) && width > 0 ? width : null,
-    height: Number.isFinite(height) && height > 0 ? height : null,
-    fps: Number.isFinite(fps) && fps > 0 ? fps : null,
-    frameCount: Number.isFinite(frameCount) && frameCount > 0 ? frameCount : null
-  };
+  return remoteMediaInfo(info, raw, remote);
+}
+
+async function downloadRemotePreviewClip(input, seconds) {
+  const dir = path.join(UPLOAD_ROOT, 'previews');
+  fs.mkdirSync(dir, { recursive: true });
+  const target = path.join(dir, `${Date.now()}-${crypto.randomUUID()}-remote.mp4`);
+  const start = Math.max(0, Number(seconds) || 0);
+  const end = start + 1;
+  const args = [
+    '-f', 'bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best',
+    '--merge-output-format', 'mp4',
+    '--force-overwrites',
+    '--no-playlist',
+    '-o', target,
+    '--download-sections', `*${start}-${end}`,
+    '--force-keyframes-at-cuts',
+    ytDlpProbeSource(input)
+  ];
+
+  await runProcess('yt-dlp', args);
+
+  if (!fs.existsSync(target) && fs.existsSync(`${target}.mp4`)) {
+    return `${target}.mp4`;
+  }
+  const stat = fs.existsSync(target) ? fs.statSync(target) : null;
+  if (!stat || !stat.isFile() || stat.size === 0) {
+    throw new Error('yt-dlp produced no preview media for this source.');
+  }
+  return target;
 }
 
 async function createPreviewFrame(input, time = '0') {
-  const source = resolveInputPath(input, 'Preview input');
-  const ext = path.extname(source).toLowerCase();
-  if (!['.gif', '.mp4', '.webm'].includes(ext)) {
-    throw new Error('Preview input must be a GIF, MP4, or WebM file.');
-  }
   const seconds = parseTimeValue(time, { allowBlank: true, label: 'Preview time' }) || 0;
+  const local = isLocalSource(input);
+  let source;
+  let cleanupSource = '';
+  let seekSeconds = seconds;
+
+  if (local) {
+    source = resolveInputPath(input, 'Preview input');
+    const ext = path.extname(source).toLowerCase();
+    if (!['.gif', '.mp4', '.webm'].includes(ext)) {
+      throw new Error('Preview input must be a supported URL or a GIF, MP4, or WebM file.');
+    }
+  } else {
+    source = await downloadRemotePreviewClip(input, seconds);
+    cleanupSource = source;
+    seekSeconds = 0;
+  }
 
   const dir = path.join(UPLOAD_ROOT, 'previews');
   fs.mkdirSync(dir, { recursive: true });
   const target = path.join(dir, `${Date.now()}-${crypto.randomUUID()}.png`);
   const args = ['-y'];
-  if (seconds > 0) args.push('-ss', String(seconds));
+  if (seekSeconds > 0) args.push('-ss', String(seekSeconds));
   args.push('-i', source, '-frames:v', '1', '-update', '1', target);
-  await runProcess('ffmpeg', args);
+  try {
+    await runProcess('ffmpeg', args);
+  } finally {
+    if (cleanupSource) fs.rm(cleanupSource, { force: true }, () => {});
+  }
   const rel = path.relative(REPO_ROOT, target).split(path.sep).join('/');
   return {
     path: rel,
@@ -779,11 +880,17 @@ function buildJob(action, fields) {
 
     case 'experimental-gif-editor': {
       const input = required(data, 'input', 'Input media');
-      const inputPath = resolveInputPath(input, 'Input media');
-      validateMediaInputExtension(input, ['gif', 'webm', 'mp4'], 'Input media');
+      const sourceIsLocal = isLocalSource(input);
+      const inputPath = sourceIsLocal ? resolveInputPath(input, 'Input media') : '';
+      const source = sourceIsLocal ? inputPath : resolveJobSource(input, 'Input media');
+      if (sourceIsLocal) {
+        validateMediaInputExtension(input, ['gif', 'webm', 'mp4'], 'Input media');
+      }
       const requestedFormat = optional(data, 'format') || 'gif';
       validateFormat(requestedFormat, ['gif', 'mp4', 'webm']);
-      const inputStem = safeStem(path.basename(input).replace(/\.[^.]+$/, ''), 'visual-caption');
+      const inputStem = sourceIsLocal
+        ? safeStem(path.basename(input).replace(/\.[^.]+$/, ''), 'visual-caption')
+        : sourceFallbackStem(input, 'visual-caption');
       const output = normalizeOutputPath(optional(data, 'output'), {
         defaultExt: requestedFormat,
         allowedExts: ['gif', 'mp4', 'webm'],
@@ -792,18 +899,15 @@ function buildJob(action, fields) {
       });
       const top = typeof data.topText === 'string' ? data.topText : '';
       const bottom = typeof data.bottomText === 'string' ? data.bottomText : '';
-      if (!top && !bottom) {
-        throw new Error('At least one text field is required.');
-      }
 
-      const args = ['--caption-local', '--bottom-from-top'];
+      const args = sourceIsLocal ? ['--caption-local', '--bottom-from-top'] : ['--bottom-from-top'];
       const topX = Number(optionalInteger(data, 'topX', 'Text 1 x', '0'));
       const topY = Number(optionalInteger(data, 'topY', 'Text 1 y', '0'));
       const bottomX = Number(optionalInteger(data, 'bottomX', 'Text 2 x', '0'));
       const bottomY = Number(optionalInteger(data, 'bottomY', 'Text 2 y', '0'));
       const fontSize = optionalInteger(data, 'fontSize', 'Font size', '50');
       const outputFps = optionalPositiveNumber(data, 'outputFps', 'Output FPS');
-      const metadata = localFrameMetadata(inputPath);
+      const metadata = sourceIsLocal ? localFrameMetadata(inputPath) : remoteFrameMetadata(input);
       const crop = parseCropFields(data, metadata);
       const width = crop ? String(crop.width) : optionalInteger(data, 'width', 'Width', '720');
       const outputStart = parseFrameBoundary(optional(data, 'outputStart'), metadata, { label: 'Output Start' });
@@ -814,8 +918,8 @@ function buildJob(action, fields) {
         throw new Error('Output Start must be before Output End.');
       }
 
-      if (outputStart) args.push('--start', String(outputStart.seconds));
-      if (outputEnd) args.push('--end', String(outputEnd.seconds));
+      if (sourceIsLocal && outputStart) args.push('--start', String(outputStart.seconds));
+      if (sourceIsLocal && outputEnd) args.push('--end', String(outputEnd.seconds));
       if (crop) {
         args.push('--crop', String(crop.x), String(crop.y), String(crop.width), String(crop.height));
       }
@@ -828,13 +932,26 @@ function buildJob(action, fields) {
       if (data.italic) args.push('--italic');
       if (data.underline) args.push('--underline');
       if (data.strike) args.push('--strikethrough');
-      args.push(input, output, top, bottom);
-      if (font) args.push(font);
 
+      if (sourceIsLocal) {
+        args.push(input, output, top, bottom);
+        if (font) args.push(font);
+        return {
+          cmd: repoPath('mememaker.sh'),
+          args,
+          outputPath: output
+        };
+      }
+
+      const remoteStart = outputStart ? String(outputStart.seconds) : '0:00';
+      const remoteEnd = outputEnd ? String(outputEnd.seconds) : '';
+      const stem = outputStem(output, `${inputStem}-visual`);
+      args.push(source, remoteStart, remoteEnd, requestedFormat, top, bottom, stem);
+      if (font) args.push(font);
       return {
         cmd: repoPath('mememaker.sh'),
         args,
-        outputPath: output
+        outputPath: `${requestedFormat === 'gif' ? 'gifs' : 'videos'}/${stem}.${requestedFormat}`
       };
     }
 
@@ -1101,7 +1218,12 @@ function serveStatic(req, res, requestPath) {
 
 function serveOutputFile(req, res, requestPath, options = {}) {
   const prefix = options.attachment ? '/download/' : '/files/';
-  const rel = decodeURIComponent(requestPath.slice(prefix.length)).replace(/^\/+/, '');
+  const decoded = safeDecodeURIComponent(requestPath.slice(prefix.length));
+  if (decoded === null) {
+    sendText(res, 400, 'Bad request');
+    return;
+  }
+  const rel = decoded.replace(/^\/+/, '');
   const target = path.resolve(REPO_ROOT, rel);
   const relative = path.relative(REPO_ROOT, target);
 
@@ -1277,7 +1399,12 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === 'GET' || req.method === 'HEAD') {
-    serveStatic(req, res, decodeURIComponent(pathname));
+    const decoded = safeDecodeURIComponent(pathname);
+    if (decoded === null) {
+      sendText(res, 400, 'Bad request');
+      return;
+    }
+    serveStatic(req, res, decoded);
     return;
   }
 
