@@ -334,9 +334,9 @@ function renderExperimentalEditor() {
     <div class="experimental-editor">
       <div class="field-grid">
         <div class="field full">
-          <label for="input">Input: GIF / MP4 / WebM</label>
+          <label for="input">Input: URL / GIF / MP4 / WebM</label>
           <div class="file-field">
-            <input id="input" name="input" type="text" placeholder="gifs/input.gif, videos/input.webm, or videos/input.mp4" required>
+            <input id="input" name="input" type="text" placeholder="YouTube, Twitter/X, or local GIF/MP4/WebM" required>
             <label class="file-button">
               Browse
               <input type="file" data-upload-for="input" accept=".gif,.webm,.mp4,image/gif,video/webm,video/mp4">

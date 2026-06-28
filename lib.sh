@@ -309,10 +309,18 @@ section_end_label() {
 }
 
 is_zero_time() {
-  case "${1:-}" in
-    0|0:0|0:00|00:00|0:0:0|0:00:00|00:00:00) return 0 ;;
-    *) return 1 ;;
-  esac
+  local raw=${1:-}
+  [[ -n "$raw" ]] || return 1
+  looks_like_time "$raw" || return 1
+  [[ "${raw,,}" != "inf" ]] || return 1
+
+  awk -v value="$raw" 'BEGIN {
+    n = split(value, parts, ":")
+    for (i = 1; i <= n; i++) {
+      if (parts[i] + 0 != 0) exit 1
+    }
+    exit 0
+  }'
 }
 
 needs_yt_dlp_section() {

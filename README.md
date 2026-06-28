@@ -86,17 +86,19 @@ Local file pickers upload the selected file into `.web-uploads/` and then use
 that uploaded local path for GIF/video/audio/font/HTML inputs. This keeps the
 browser security model intact while still giving a normal file chooser.
 
-The **Experimental** tab includes a visual media text editor. Input can be GIF,
-WebM, or MP4. Output is an output name plus a GIF/MP4/WebM dropdown. It loads a
+The **Experimental** tab includes a visual media text editor. Input can be a
+local GIF/WebM/MP4, a YouTube URL/ID, or another URL supported by the installed
+`yt-dlp`. Output is an output name plus a GIF/MP4/WebM dropdown. It loads a
 preview frame, shows resolution/length/FPS/frame count, lets you scrub with the
 slider or editable time/frame fields, drag two text fields into place, drag the
 preview crop edges/corners, set optional output FPS, and trim output with Output
 Start/End. Output Start/End accept time values such as `0:01.5` or frame values
-such as `18f`, and Start must be before End. It renders the result as GIF, MP4,
-or WebM and passes the crop rectangle, resulting x/y coordinates, font face,
-bold, italic, underline, strikethrough, and size settings to the local caption
-renderer. If you browse or enter a repo-local font path, the preview text loads
-that font file in the browser before rendering.
+such as `18f`, and Start must be before End. Text 1 and Text 2 can be left blank
+to render trim/crop/format changes without captions. It renders the result as
+GIF, MP4, or WebM and passes the crop rectangle, resulting x/y coordinates, font
+face, bold, italic, underline, strikethrough, and size settings to the local
+caption renderer. If you browse or enter a repo-local font path, the preview
+text loads that font file in the browser before rendering.
 
 ```bash
 MM_WEB_PORT=3001 npm run web
