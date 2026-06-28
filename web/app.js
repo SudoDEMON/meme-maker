@@ -98,6 +98,7 @@ const editorState = {
   frameCount: 0,
   previewSource: '',
   positionsInitialized: false,
+  cropInitialized: false,
   dragging: null
 };
 const maxLogChars = 80000;
@@ -368,6 +369,14 @@ function renderExperimentalEditor() {
           <input id="outputEnd" name="outputEnd" type="text" placeholder="0:01.5 or 18f" inputmode="decimal" data-output-boundary>
         </div>
         <div class="field">
+          <label for="cropDisplay">Crop area</label>
+          <input id="cropDisplay" type="text" value="Crop: full frame" readonly>
+        </div>
+        <div class="field">
+          <label for="cropResetButton">Crop</label>
+          <button id="cropResetButton" class="secondary-button" type="button">Reset crop</button>
+        </div>
+        <div class="field">
           <label for="topText">Text 1</label>
           <textarea id="topText" name="topText" data-editor-bind="topText">TOP</textarea>
         </div>
@@ -444,6 +453,10 @@ function renderExperimentalEditor() {
       <input type="hidden" name="bottomX" value="0">
       <input type="hidden" name="bottomY" value="0">
       <input type="hidden" name="width" value="720">
+      <input type="hidden" name="cropX" value="0">
+      <input type="hidden" name="cropY" value="0">
+      <input type="hidden" name="cropWidth" value="0">
+      <input type="hidden" name="cropHeight" value="0">
 
       <div class="editor-stage">
         <div class="editor-canvas" id="editorCanvas">
@@ -451,6 +464,16 @@ function renderExperimentalEditor() {
           <img id="editorPreview" alt="" hidden>
           <div class="editor-text editor-text-one" data-editor-text="topText" tabindex="0">TOP</div>
           <div class="editor-text editor-text-two" data-editor-text="bottomText" tabindex="0">BOTTOM</div>
+          <div class="crop-box" id="cropBox" hidden aria-hidden="true">
+            <span class="crop-handle crop-handle-n" data-crop-handle="n"></span>
+            <span class="crop-handle crop-handle-e" data-crop-handle="e"></span>
+            <span class="crop-handle crop-handle-s" data-crop-handle="s"></span>
+            <span class="crop-handle crop-handle-w" data-crop-handle="w"></span>
+            <span class="crop-handle crop-handle-nw" data-crop-handle="nw"></span>
+            <span class="crop-handle crop-handle-ne" data-crop-handle="ne"></span>
+            <span class="crop-handle crop-handle-sw" data-crop-handle="sw"></span>
+            <span class="crop-handle crop-handle-se" data-crop-handle="se"></span>
+          </div>
         </div>
       </div>
     </div>`;
@@ -469,6 +492,7 @@ function renderTool(tool) {
     editorState.frameCount = 0;
     editorState.previewSource = '';
     editorState.positionsInitialized = false;
+    editorState.cropInitialized = false;
     editorState.dragging = null;
     toolForm.innerHTML = renderExperimentalEditor();
     syncExperimentalEditor();
@@ -585,6 +609,7 @@ function editorElements() {
     canvas: toolForm.querySelector('#editorCanvas'),
     preview: toolForm.querySelector('#editorPreview'),
     placeholder: toolForm.querySelector('#editorPlaceholder'),
+    cropBox: toolForm.querySelector('#cropBox'),
     top: toolForm.querySelector('[data-editor-text="topText"]'),
     bottom: toolForm.querySelector('[data-editor-text="bottomText"]')
   };
@@ -599,6 +624,147 @@ function editorScale() {
     x: preview.clientWidth / editorState.naturalWidth,
     y: preview.clientHeight / editorState.naturalHeight
   };
+}
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function cropMinimumSize() {
+  if (!editorState.naturalWidth || !editorState.naturalHeight) return 1;
+  return Math.max(1, Math.min(8, editorState.naturalWidth, editorState.naturalHeight));
+}
+
+function fullExperimentalCrop() {
+  return {
+    x: 0,
+    y: 0,
+    width: Math.max(0, Math.round(editorState.naturalWidth || 0)),
+    height: Math.max(0, Math.round(editorState.naturalHeight || 0))
+  };
+}
+
+function cropFieldValues() {
+  return {
+    x: experimentalField('cropX'),
+    y: experimentalField('cropY'),
+    width: experimentalField('cropWidth'),
+    height: experimentalField('cropHeight')
+  };
+}
+
+function clampExperimentalCrop(crop) {
+  const naturalWidth = Math.max(0, Math.round(editorState.naturalWidth || 0));
+  const naturalHeight = Math.max(0, Math.round(editorState.naturalHeight || 0));
+  if (!naturalWidth || !naturalHeight) return { x: 0, y: 0, width: 0, height: 0 };
+
+  const minSize = cropMinimumSize();
+  const maxX = Math.max(0, naturalWidth - minSize);
+  const maxY = Math.max(0, naturalHeight - minSize);
+  const x = clampNumber(Math.round(Number(crop.x) || 0), 0, maxX);
+  const y = clampNumber(Math.round(Number(crop.y) || 0), 0, maxY);
+  const width = clampNumber(Math.round(Number(crop.width) || naturalWidth), minSize, naturalWidth - x);
+  const height = clampNumber(Math.round(Number(crop.height) || naturalHeight), minSize, naturalHeight - y);
+
+  return { x, y, width, height };
+}
+
+function currentExperimentalCrop() {
+  const fields = cropFieldValues();
+  const full = fullExperimentalCrop();
+  if (!fields.width || !fields.height || Number(fields.width.value || 0) <= 0 || Number(fields.height.value || 0) <= 0) {
+    return full;
+  }
+  return clampExperimentalCrop({
+    x: Number(fields.x?.value || 0),
+    y: Number(fields.y?.value || 0),
+    width: Number(fields.width.value || full.width),
+    height: Number(fields.height.value || full.height)
+  });
+}
+
+function isFullExperimentalCrop(crop) {
+  return crop.x === 0
+    && crop.y === 0
+    && crop.width === Math.round(editorState.naturalWidth || 0)
+    && crop.height === Math.round(editorState.naturalHeight || 0);
+}
+
+function setExperimentalCrop(crop, { updateOutputWidth = true } = {}) {
+  const next = clampExperimentalCrop(crop);
+  const fields = cropFieldValues();
+  if (fields.x) fields.x.value = String(next.x);
+  if (fields.y) fields.y.value = String(next.y);
+  if (fields.width) fields.width.value = String(next.width);
+  if (fields.height) fields.height.value = String(next.height);
+  if (updateOutputWidth && next.width > 0) {
+    const widthField = experimentalField('width');
+    if (widthField) widthField.value = String(next.width);
+  }
+
+  const display = toolForm.querySelector('#cropDisplay');
+  if (display) {
+    display.value = isFullExperimentalCrop(next)
+      ? `Crop: full frame (${next.width}x${next.height})`
+      : `Crop: ${next.x}/${next.y} ${next.width}x${next.height}`;
+  }
+
+  const { cropBox } = editorElements();
+  if (!cropBox || !next.width || !next.height) return;
+  const scale = editorScale();
+  cropBox.hidden = false;
+  cropBox.style.left = `${next.x * scale.x}px`;
+  cropBox.style.top = `${next.y * scale.y}px`;
+  cropBox.style.width = `${next.width * scale.x}px`;
+  cropBox.style.height = `${next.height * scale.y}px`;
+}
+
+function initializeExperimentalCrop() {
+  setExperimentalCrop(fullExperimentalCrop());
+  editorState.cropInitialized = true;
+}
+
+function refreshExperimentalCrop() {
+  if (!editorState.naturalWidth || !editorState.naturalHeight) return;
+  setExperimentalCrop(currentExperimentalCrop(), { updateOutputWidth: false });
+}
+
+function resetExperimentalCrop() {
+  if (!editorState.naturalWidth || !editorState.naturalHeight) return;
+  setExperimentalCrop(fullExperimentalCrop());
+  editorState.cropInitialized = true;
+}
+
+function clearExperimentalCrop() {
+  const fields = cropFieldValues();
+  if (fields.x) fields.x.value = '0';
+  if (fields.y) fields.y.value = '0';
+  if (fields.width) fields.width.value = '0';
+  if (fields.height) fields.height.value = '0';
+  const display = toolForm.querySelector('#cropDisplay');
+  if (display) display.value = 'Crop: full frame';
+  const { cropBox } = editorElements();
+  if (cropBox) cropBox.hidden = true;
+  editorState.cropInitialized = false;
+}
+
+function validateExperimentalCrop() {
+  if (activeTool.id !== 'experimental-gif-editor') return;
+  const fields = cropFieldValues();
+  const width = Number(fields.width?.value || 0);
+  const height = Number(fields.height?.value || 0);
+  if (!width && !height) return;
+  const crop = currentExperimentalCrop();
+  if (crop.width <= 0 || crop.height <= 0) {
+    throw new Error('Crop width and height must be greater than zero.');
+  }
+  if (editorState.naturalWidth && editorState.naturalHeight) {
+    const inside = crop.x >= 0
+      && crop.y >= 0
+      && crop.x + crop.width <= editorState.naturalWidth
+      && crop.y + crop.height <= editorState.naturalHeight;
+    if (!inside) throw new Error('Crop area must stay inside the input media.');
+  }
 }
 
 function experimentalField(name) {
@@ -847,6 +1013,7 @@ async function loadExperimentalPreview() {
     await loadExperimentalSourceInfo(input);
     editorState.previewSource = input;
     editorState.positionsInitialized = false;
+    editorState.cropInitialized = false;
   }
   const time = experimentalPreviewTime();
 
@@ -882,11 +1049,34 @@ async function loadExperimentalPreview() {
     applyExperimentalStyles();
     refreshExperimentalPositions();
   }
+  if (!editorState.cropInitialized) {
+    initializeExperimentalCrop();
+  } else {
+    refreshExperimentalCrop();
+  }
   syncExperimentalPreviewControls(time);
   setExperimentalMediaStatus('', 'ready');
 }
 
 function beginExperimentalDrag(event) {
+  const cropHandle = event.target.closest('[data-crop-handle]');
+  if (activeTool.id === 'experimental-gif-editor' && cropHandle && !cropHandle.closest('#cropBox')?.hidden) {
+    const { canvas } = editorElements();
+    if (!canvas || !editorState.naturalWidth || !editorState.naturalHeight) return;
+    editorState.dragging = {
+      type: 'crop',
+      handle: cropHandle.dataset.cropHandle,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      crop: currentExperimentalCrop()
+    };
+    if (typeof cropHandle.setPointerCapture === 'function' && event.pointerId !== undefined) {
+      cropHandle.setPointerCapture(event.pointerId);
+    }
+    event.preventDefault();
+    return;
+  }
+
   const overlay = event.target.closest('.editor-text');
   if (activeTool.id !== 'experimental-gif-editor' || !overlay || overlay.hidden) return;
   const { canvas } = editorElements();
@@ -894,6 +1084,7 @@ function beginExperimentalDrag(event) {
 
   const overlayRect = overlay.getBoundingClientRect();
   editorState.dragging = {
+    type: 'text',
     name: overlay.dataset.editorText,
     offsetX: event.clientX - overlayRect.left,
     offsetY: event.clientY - overlayRect.top
@@ -904,8 +1095,45 @@ function beginExperimentalDrag(event) {
   event.preventDefault();
 }
 
+function moveExperimentalCropDrag(event) {
+  const drag = editorState.dragging;
+  if (!drag || drag.type !== 'crop') return;
+
+  const scale = editorScale();
+  const dx = scale.x > 0 ? (event.clientX - drag.startClientX) / scale.x : 0;
+  const dy = scale.y > 0 ? (event.clientY - drag.startClientY) / scale.y : 0;
+  const minSize = cropMinimumSize();
+  let left = drag.crop.x;
+  let top = drag.crop.y;
+  let right = drag.crop.x + drag.crop.width;
+  let bottom = drag.crop.y + drag.crop.height;
+  const handle = drag.handle || '';
+
+  if (handle.includes('w')) left += dx;
+  if (handle.includes('e')) right += dx;
+  if (handle.includes('n')) top += dy;
+  if (handle.includes('s')) bottom += dy;
+
+  if (handle.includes('w')) left = clampNumber(left, 0, right - minSize);
+  if (handle.includes('e')) right = clampNumber(right, left + minSize, editorState.naturalWidth);
+  if (handle.includes('n')) top = clampNumber(top, 0, bottom - minSize);
+  if (handle.includes('s')) bottom = clampNumber(bottom, top + minSize, editorState.naturalHeight);
+
+  setExperimentalCrop({
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top
+  });
+  event.preventDefault();
+}
+
 function moveExperimentalDrag(event) {
   if (!editorState.dragging || activeTool.id !== 'experimental-gif-editor') return;
+  if (editorState.dragging.type === 'crop') {
+    moveExperimentalCropDrag(event);
+    return;
+  }
   const { canvas } = editorElements();
   const overlay = toolForm.querySelector(`[data-editor-text="${CSS.escape(editorState.dragging.name)}"]`);
   if (!canvas || !overlay) return;
@@ -932,6 +1160,7 @@ function formFields() {
   }
   validateTimeRange();
   validateExperimentalOutputRange();
+  validateExperimentalCrop();
 
   const data = new FormData(toolForm);
   const fields = {};
@@ -1213,8 +1442,10 @@ toolForm.addEventListener('input', event => {
   if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[name="input"]')) {
     editorState.previewSource = '';
     editorState.positionsInitialized = false;
+    editorState.cropInitialized = false;
     editorState.naturalWidth = 0;
     editorState.naturalHeight = 0;
+    clearExperimentalCrop();
     setExperimentalScrub(0);
     if (event.target.value.trim()) queueExperimentalPreview(700);
   }
@@ -1252,6 +1483,13 @@ toolForm.addEventListener('keydown', event => {
   }
 });
 
+toolForm.addEventListener('click', event => {
+  if (activeTool.id === 'experimental-gif-editor' && event.target.closest('#cropResetButton')) {
+    event.preventDefault();
+    resetExperimentalCrop();
+  }
+});
+
 toolForm.addEventListener('pointerdown', beginExperimentalDrag);
 document.addEventListener('pointermove', moveExperimentalDrag);
 document.addEventListener('pointerup', endExperimentalDrag);
@@ -1274,6 +1512,12 @@ cancelButton.addEventListener('click', () => {
 });
 
 resetButton.addEventListener('click', resetActiveForm);
+
+window.addEventListener('resize', () => {
+  if (activeTool.id !== 'experimental-gif-editor') return;
+  refreshExperimentalPositions();
+  refreshExperimentalCrop();
+});
 
 renderTool(activeTool);
 checkHealth();

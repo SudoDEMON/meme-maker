@@ -7,10 +7,11 @@
     "build": "./build.sh",
     "convert": "./convert.sh",
     "audio-video": "./audio_video.sh",
-    "music": "./music.sh",
-    "video": "./video.sh",
     "mememaker": "./mememaker.sh",
-    "doctor": "./install.sh --doctor"
+    "doctor": "./install.sh --doctor",
+    "install:linux": "./install-linux.sh",
+    "install:macos": "./install-macos.sh",
+    "install:windows": "powershell -ExecutionPolicy Bypass -File ./install-windows.ps1"
   },
   "description": "yt-dlp + ffmpeg toolkit for fast YouTube clips, music stings, and captioned memes/GIFs. Personal but portable.",
   "keywords": [

@@ -11,6 +11,11 @@
 #   ./install.sh --deps-only     # just install packages, don't link scripts
 #   ./install.sh --link-only     # just symlink scripts (assumes deps exist)
 #
+# OS-specific entrypoints:
+#   ./install-linux.sh
+#   ./install-macos.sh
+#   powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+#
 # What it does:
 #   - Detects your OS and package manager
 #   - Installs yt-dlp + ffmpeg (+ fonts + node if needed)
@@ -55,6 +60,11 @@ The installer will:
   • Install yt-dlp, ffmpeg, and good fonts
   • Optionally install Node.js (needed for build.sh / capture.js)
   • Symlink the scripts into ${BIN_DIR} so you can run them from anywhere
+
+OS-specific entrypoints are also available:
+  ./install-linux.sh
+  ./install-macos.sh
+  powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 
 Doctor mode checks your environment without making changes.
 EOF
@@ -184,12 +194,31 @@ install_deps() {
 link_scripts() {
   mkdir -p "$BIN_DIR"
 
+  local stale_links=(
+    "download"
+    "download.sh"
+    "text"
+    "text.sh"
+    "audio"
+    "audio.sh"
+    "video"
+    "video.sh"
+    "music"
+    "music.sh"
+    "meme-simple"
+  )
+
+  for stale in "${stale_links[@]}"; do
+    if [[ -L "$BIN_DIR/$stale" ]]; then
+      rm -f "$BIN_DIR/$stale"
+      echo "  removed stale → $stale"
+    fi
+  done
+
   local scripts=(
     "mememaker.sh"
     "convert.sh"
     "audio_video.sh"
-    "video.sh"
-    "music.sh"
     "build.sh"
     "lib.sh"
   )
@@ -215,12 +244,6 @@ link_scripts() {
       warn "Missing: $script"
     fi
   done
-
-  # Also link the standalone meme tool (optional)
-  if [[ -f "$REPO_ROOT/Memes/mememaker.sh" ]]; then
-    ln -sf "$REPO_ROOT/Memes/mememaker.sh" "$BIN_DIR/meme-simple"
-    echo "  linked → meme-simple (standalone version)"
-  fi
 
   success "Scripts linked into $BIN_DIR"
 
@@ -446,7 +469,7 @@ NODE
   # --- Linked commands in PATH ---
   echo
   echo "${BOLD}Installed commands (in $BIN_DIR):${RESET}"
-  local cmds=(mememaker meme-convert audio_video audio-video video music build meme-simple)
+  local cmds=(mememaker meme-convert audio_video audio-video build)
   local missing_links=0
   for c in "${cmds[@]}"; do
     if [[ -L "$BIN_DIR/$c" || -f "$BIN_DIR/$c" ]]; then
@@ -516,12 +539,12 @@ echo
 cat <<EOF
 You can now run the tools directly:
 
-  mememaker   meme-convert   audio-video   video   music   build   meme-simple
+  mememaker   meme-convert   audio-video   build
 
 Try:
   mememaker --help
   meme-convert --help
-  video --help
+  audio-video --help
 
 To update later:
   cd $REPO_ROOT
