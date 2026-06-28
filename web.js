@@ -11,7 +11,7 @@ const REPO_ROOT = __dirname;
 const WEB_ROOT = path.join(REPO_ROOT, 'web');
 const UPLOAD_ROOT = path.join(REPO_ROOT, '.web-uploads');
 const HOST = process.env.MM_WEB_HOST || '127.0.0.1';
-const PORT = Number(process.env.MM_WEB_PORT || process.env.PORT || 3000);
+const PORT = Number(process.env.MM_WEB_PORT || process.env.PORT || 3001);
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_UPLOAD_BYTES = Number(process.env.MM_WEB_MAX_UPLOAD_BYTES || 500 * 1024 * 1024);
 const SOURCE_INFO_TIMEOUT_MS = Number(process.env.MM_WEB_SOURCE_INFO_TIMEOUT_MS || 15000);
@@ -234,37 +234,6 @@ function publicDownloadUrl(outputPath) {
   return `/download/${rel.split(path.sep).map(encodeURIComponent).join('/')}`;
 }
 
-function youtubeId(value) {
-  const raw = clean(value);
-  if (!raw) {
-    throw new Error('YouTube ID is required.');
-  }
-
-  let id = raw;
-  try {
-    const url = new URL(raw);
-    const host = url.hostname.replace(/^www\./, '');
-    if (host === 'youtu.be') {
-      id = url.pathname.split('/').filter(Boolean)[0] || '';
-    } else if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
-      id = url.searchParams.get('v') || '';
-      if (!id) {
-        const parts = url.pathname.split('/').filter(Boolean);
-        const marker = parts.findIndex(part => ['shorts', 'embed', 'v'].includes(part));
-        if (marker >= 0) id = parts[marker + 1] || '';
-      }
-    }
-  } catch {
-    id = raw;
-  }
-
-  id = clean(id).split(/[?&#/]/)[0];
-  if (!/^[A-Za-z0-9_-]{11}$/.test(id)) {
-    throw new Error(`Could not extract a valid YouTube ID from: ${raw}`);
-  }
-  return id;
-}
-
 function extractYouTubeId(value) {
   const raw = clean(value);
   if (!raw) return '';
@@ -464,6 +433,37 @@ function localFrameMetadata(inputPath) {
   } catch {
     return {};
   }
+}
+
+function parseCropFields(fields, metadata = {}) {
+  const rawX = optional(fields, 'cropX');
+  const rawY = optional(fields, 'cropY');
+  const rawWidth = optional(fields, 'cropWidth');
+  const rawHeight = optional(fields, 'cropHeight');
+  if (!rawX && !rawY && !rawWidth && !rawHeight) return null;
+
+  const x = Number(optionalInteger(fields, 'cropX', 'Crop x', '0'));
+  const y = Number(optionalInteger(fields, 'cropY', 'Crop y', '0'));
+  const width = Number(optionalInteger(fields, 'cropWidth', 'Crop width', '0'));
+  const height = Number(optionalInteger(fields, 'cropHeight', 'Crop height', '0'));
+
+  if (width === 0 && height === 0) return null;
+  if (width <= 0 || height <= 0) {
+    throw new Error('Crop width and height must be greater than zero.');
+  }
+
+  const sourceWidth = Number(metadata.width) || 0;
+  const sourceHeight = Number(metadata.height) || 0;
+  if (sourceWidth > 0 && sourceHeight > 0) {
+    if (x >= sourceWidth || y >= sourceHeight || x + width > sourceWidth || y + height > sourceHeight) {
+      throw new Error('Crop area must stay inside the input media.');
+    }
+    if (x === 0 && y === 0 && width === sourceWidth && height === sourceHeight) {
+      return null;
+    }
+  }
+
+  return { x, y, width, height };
 }
 
 function addCaptionOptions(args, fields) {
@@ -737,55 +737,6 @@ function buildJob(action, fields) {
       };
     }
 
-    case 'download-video': {
-      const id = youtubeId(required(data, 'videoId', 'YouTube ID'));
-      const { start, end } = validateTimeRange(data);
-      const format = optional(data, 'format') || 'mp4';
-      validateFormat(format, ['mp4', 'webm']);
-      const output = normalizeVideoOutput(optional(data, 'output'), safeStem(id), format);
-
-      return {
-        cmd: repoPath('video.sh'),
-        args: [id, start, end, output],
-        outputPath: output
-      };
-    }
-
-    case 'download-gif': {
-      const id = youtubeId(required(data, 'videoId', 'YouTube ID'));
-      const { start, end } = validateTimeRange(data);
-      const output = normalizeOutputPath(optional(data, 'outputName'), {
-        defaultExt: 'gif',
-        allowedExts: ['gif'],
-        fallbackStem: safeStem(id),
-        defaultDir: 'gifs'
-      });
-      const stem = outputStem(output, safeStem(id));
-
-      return {
-        cmd: repoPath('mememaker.sh'),
-        args: ['--no-text', id, start, end, 'gif', stem],
-        outputPath: `gifs/${stem}.gif`
-      };
-    }
-
-    case 'download-audio': {
-      const id = youtubeId(required(data, 'videoId', 'YouTube ID'));
-      const { start, end } = validateTimeRange(data);
-      const output = normalizeOutputPath(optional(data, 'output'), {
-        defaultExt: 'mp3',
-        allowedExts: ['mp3'],
-        fallbackStem: safeStem(id),
-        defaultDir: 'Audio'
-      });
-
-      return {
-        cmd: repoPath('music.sh'),
-        args: [id, start, end, output],
-        outputPath: output
-      };
-    }
-
     case 'text-to-media': {
       const sourceRaw = required(data, 'source', 'Source');
       const source = resolveJobSource(sourceRaw);
@@ -826,63 +777,6 @@ function buildJob(action, fields) {
       };
     }
 
-    case 'caption-youtube': {
-      const id = youtubeId(required(data, 'videoId', 'YouTube ID'));
-      const { start, end } = validateTimeRange(data);
-      const format = optional(data, 'format') || 'gif';
-      validateFormat(format, ['gif', 'mp4', 'webm']);
-
-      const args = [];
-      addCaptionOptions(args, data);
-      const top = typeof data.topText === 'string' ? data.topText : '';
-      const bottom = typeof data.bottomText === 'string' ? data.bottomText : '';
-      const font = optional(data, 'fontPath');
-      const output = normalizeOutputPath(optional(data, 'outputName'), {
-        defaultExt: format,
-        allowedExts: [format],
-        fallbackStem: safeStem(id),
-        defaultDir: format === 'gif' ? 'gifs' : 'videos'
-      });
-      const stem = outputStem(output, safeStem(id));
-
-      args.push(id, start, end, format, top, bottom, stem);
-      if (font) args.push(font);
-
-      return {
-        cmd: repoPath('mememaker.sh'),
-        args,
-        outputPath: `${format === 'gif' ? 'gifs' : 'videos'}/${stem}.${format}`
-      };
-    }
-
-    case 'caption-local': {
-      const input = required(data, 'input', 'Input media');
-      resolveInputPath(input, 'Input media');
-      validateMediaInputExtension(input, ['gif', 'mp4', 'webm'], 'Input media');
-      const requestedFormat = optional(data, 'format') || 'gif';
-      validateFormat(requestedFormat, ['gif', 'mp4', 'webm']);
-      const inputStem = safeStem(path.basename(input).replace(/\.[^.]+$/, ''), 'captioned');
-      const output = normalizeOutputPath(optional(data, 'output'), {
-        defaultExt: requestedFormat,
-        allowedExts: ['gif', 'mp4', 'webm'],
-        fallbackStem: `${inputStem}-captioned`,
-        defaultDir: requestedFormat === 'gif' ? 'gifs' : 'videos'
-      });
-      const top = typeof data.topText === 'string' ? data.topText : '';
-      const bottom = typeof data.bottomText === 'string' ? data.bottomText : '';
-      const font = optional(data, 'fontPath');
-      const args = ['--caption-local'];
-      addCaptionOptions(args, data);
-      args.push(input, output, top, bottom);
-      if (font) args.push(font);
-
-      return {
-        cmd: repoPath('mememaker.sh'),
-        args,
-        outputPath: output
-      };
-    }
-
     case 'experimental-gif-editor': {
       const input = required(data, 'input', 'Input media');
       const inputPath = resolveInputPath(input, 'Input media');
@@ -903,14 +797,15 @@ function buildJob(action, fields) {
       }
 
       const args = ['--caption-local', '--bottom-from-top'];
-      const topX = optionalInteger(data, 'topX', 'Text 1 x', '0');
-      const topY = optionalInteger(data, 'topY', 'Text 1 y', '0');
-      const bottomX = optionalInteger(data, 'bottomX', 'Text 2 x', '0');
-      const bottomY = optionalInteger(data, 'bottomY', 'Text 2 y', '0');
+      const topX = Number(optionalInteger(data, 'topX', 'Text 1 x', '0'));
+      const topY = Number(optionalInteger(data, 'topY', 'Text 1 y', '0'));
+      const bottomX = Number(optionalInteger(data, 'bottomX', 'Text 2 x', '0'));
+      const bottomY = Number(optionalInteger(data, 'bottomY', 'Text 2 y', '0'));
       const fontSize = optionalInteger(data, 'fontSize', 'Font size', '50');
-      const width = optionalInteger(data, 'width', 'Width', '720');
       const outputFps = optionalPositiveNumber(data, 'outputFps', 'Output FPS');
       const metadata = localFrameMetadata(inputPath);
+      const crop = parseCropFields(data, metadata);
+      const width = crop ? String(crop.width) : optionalInteger(data, 'width', 'Width', '720');
       const outputStart = parseFrameBoundary(optional(data, 'outputStart'), metadata, { label: 'Output Start' });
       const outputEnd = parseFrameBoundary(optional(data, 'outputEnd'), metadata, { label: 'Output End' });
       const fontFamily = optional(data, 'fontFamily');
@@ -921,8 +816,11 @@ function buildJob(action, fields) {
 
       if (outputStart) args.push('--start', String(outputStart.seconds));
       if (outputEnd) args.push('--end', String(outputEnd.seconds));
-      args.push('--top-x', topX, '--top-y', topY);
-      args.push('--bottom-x', bottomX, '--bottom-y', bottomY);
+      if (crop) {
+        args.push('--crop', String(crop.x), String(crop.y), String(crop.width), String(crop.height));
+      }
+      args.push('--top-x', String(Math.max(0, topX - (crop ? crop.x : 0))), '--top-y', String(Math.max(0, topY - (crop ? crop.y : 0))));
+      args.push('--bottom-x', String(Math.max(0, bottomX - (crop ? crop.x : 0))), '--bottom-y', String(Math.max(0, bottomY - (crop ? crop.y : 0))));
       args.push('--font-size', fontSize, '--width', width);
       if (outputFps) args.push('--fps', outputFps);
       if (fontFamily) args.push('--font-family', fontFamily);
@@ -952,21 +850,6 @@ function buildJob(action, fields) {
       return {
         cmd: repoPath('audio_video.sh'),
         args: [source, start, end, audio, output],
-        outputPath: output
-      };
-    }
-
-    case 'add-audio': {
-      const media = required(data, 'media', 'Input media');
-      const audio = required(data, 'audio', 'Input audio');
-      const mediaStem = safeStem(path.basename(media).replace(/\.[^.]+$/, ''), 'clip');
-      const output = normalizeVideoOutput(optional(data, 'output'), `${mediaStem}-with-audio`, 'mp4');
-      const args = ['combine', media, audio];
-      args.push(output);
-
-      return {
-        cmd: repoPath('video.sh'),
-        args,
         outputPath: output
       };
     }
@@ -1266,13 +1149,7 @@ async function handleRequest(req, res) {
         'text-to-media',
         'audio-to-video',
         'build-html',
-        'experimental-gif-editor',
-        'download-video',
-        'download-gif',
-        'download-audio',
-        'caption-youtube',
-        'caption-local',
-        'add-audio'
+        'experimental-gif-editor'
       ]
     });
     return;

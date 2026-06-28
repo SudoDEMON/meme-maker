@@ -47,6 +47,10 @@ LOCAL_START="0:00"
 LOCAL_END=""
 NO_TEXT=0
 CAPTION_LOCAL=0
+CROP_X="${MM_CROP_X:-}"
+CROP_Y="${MM_CROP_Y:-}"
+CROP_WIDTH="${MM_CROP_WIDTH:-}"
+CROP_HEIGHT="${MM_CROP_HEIGHT:-}"
 
 show_mememaker_help() {
   cat <<'EOF'
@@ -79,6 +83,8 @@ Options:
   --bottom-bold
   --bottom-italic
   --width <px>          Output width. Default: 720
+  --crop <x> <y> <w> <h>
+                         Crop local/cleaned media before scaling and captions.
   --start <time>        Local caption start time. Default: 0:00
   --end <time>          Local caption end time. Blank means end of media.
   --caption-local       Add captions to a local GIF/MP4/WebM instead of downloading.
@@ -111,6 +117,21 @@ is_positive_number() {
   awk -v value="$value" 'BEGIN { exit !(value > 0) }'
 }
 
+crop_enabled() {
+  [[ -n "$CROP_X$CROP_Y$CROP_WIDTH$CROP_HEIGHT" ]]
+}
+
+validate_crop_options() {
+  crop_enabled || return 0
+
+  [[ -n "$CROP_X" && -n "$CROP_Y" && -n "$CROP_WIDTH" && -n "$CROP_HEIGHT" ]] \
+    || die "--crop requires x, y, width, and height."
+  [[ "$CROP_X" =~ ^[0-9]+$ ]] || die "--crop x must be a non-negative integer: $CROP_X"
+  [[ "$CROP_Y" =~ ^[0-9]+$ ]] || die "--crop y must be a non-negative integer: $CROP_Y"
+  [[ "$CROP_WIDTH" =~ ^[0-9]+$ && "$CROP_WIDTH" -gt 0 ]] || die "--crop width must be a positive integer: $CROP_WIDTH"
+  [[ "$CROP_HEIGHT" =~ ^[0-9]+$ && "$CROP_HEIGHT" -gt 0 ]] || die "--crop height must be a positive integer: $CROP_HEIGHT"
+}
+
 ensure_parent_dir() {
   local out=$1
   local d
@@ -134,6 +155,7 @@ validate_layout_options() {
   [[ -z "$BOTTOM_FONT_SIZE" || ( "$BOTTOM_FONT_SIZE" =~ ^[0-9]+$ && "$BOTTOM_FONT_SIZE" -gt 0 ) ]] || die "--bottom-font-size must be a positive integer: $BOTTOM_FONT_SIZE"
   looks_like_time "$LOCAL_START" || die "--start must be a time value: $LOCAL_START"
   [[ -z "$LOCAL_END" ]] || looks_like_time "$LOCAL_END" || die "--end must be blank or a time value: $LOCAL_END"
+  validate_crop_options
 }
 
 validate_type() {
@@ -297,6 +319,15 @@ build_caption_filter() {
   printf '%s\n' "$filter"
 }
 
+build_base_video_filter() {
+  local scale_filter="scale=$WIDTH:-2:flags=lanczos"
+  if crop_enabled; then
+    printf 'crop=%s:%s:%s:%s,%s\n' "$CROP_WIDTH" "$CROP_HEIGHT" "$CROP_X" "$CROP_Y" "$scale_filter"
+  else
+    printf '%s\n' "$scale_filter"
+  fi
+}
+
 encode_media() {
   local input=$1
   local out=$2
@@ -304,7 +335,7 @@ encode_media() {
   local caption_filter=$4
   local trim_start=${5:-}
   local trim_end=${6:-}
-  local scale_filter="scale=$WIDTH:-2:flags=lanczos"
+  local base_filter
   local filter
   local palette
   local gif_fps="${OUTPUT_FPS:-$FPS}"
@@ -323,7 +354,8 @@ encode_media() {
   case "$type" in
     gif)
       palette="$(make_temp_file --ext png)"
-      filter="$(append_filter "fps=$gif_fps,$scale_filter" "$caption_filter")"
+      base_filter="$(build_base_video_filter)"
+      filter="$(append_filter "fps=$gif_fps,$base_filter" "$caption_filter")"
 
       info "Generating palette..."
       ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter,palettegen" -frames:v 1 -update 1 "$palette"
@@ -334,7 +366,7 @@ encode_media() {
              -loop 0 "$out"
       ;;
     mp4)
-      video_filter="$scale_filter"
+      video_filter="$(build_base_video_filter)"
       [[ -n "$OUTPUT_FPS" ]] && video_filter="fps=$OUTPUT_FPS,$video_filter"
       filter="$(append_filter "$video_filter" "$caption_filter")"
       info "Creating MP4..."
@@ -343,7 +375,7 @@ encode_media() {
              -pix_fmt yuv420p "$out"
       ;;
     webm)
-      video_filter="$scale_filter"
+      video_filter="$(build_base_video_filter)"
       [[ -n "$OUTPUT_FPS" ]] && video_filter="fps=$OUTPUT_FPS,$video_filter"
       filter="$(append_filter "$video_filter" "$caption_filter")"
       info "Creating WebM..."
@@ -560,15 +592,11 @@ interactive_download_video() {
   [[ "$format" == "gif" ]] && die "Use Download GIF for GIF output."
   out="$(prompt_blank "Output path, blank for default")"
 
-  if [[ -n "$out" ]]; then
-    "$SCRIPT_DIR/video.sh" "$id" "$start" "$end" "$out"
-  elif [[ "$format" == "webm" ]]; then
-    "$SCRIPT_DIR/video.sh" "$id" "$start" "$end" "videos/${id}.webm"
-  elif [[ -n "$end" ]]; then
-    "$SCRIPT_DIR/video.sh" "$id" "$start" "$end"
-  else
-    "$SCRIPT_DIR/video.sh" "$id" "$start"
+  if [[ -z "$out" ]]; then
+    mkdir -p videos
+    out="videos/$(source_output_stem "$id").${format}"
   fi
+  "$SCRIPT_DIR/convert.sh" "$id" "$start" "$end" "$format" "$out"
 }
 
 interactive_download_gif() {
@@ -592,13 +620,11 @@ interactive_download_audio() {
   end="$(prompt_blank "End time, blank for full video")"
   out="$(prompt_blank "Output path, blank for default")"
 
-  if [[ -n "$out" ]]; then
-    "$SCRIPT_DIR/music.sh" "$id" "$start" "$end" "$out"
-  elif [[ -n "$end" ]]; then
-    "$SCRIPT_DIR/music.sh" "$id" "$start" "$end"
-  else
-    "$SCRIPT_DIR/music.sh" "$id" "$start"
+  if [[ -z "$out" ]]; then
+    mkdir -p Audio
+    out="Audio/$(source_output_stem "$id").mp3"
   fi
+  "$SCRIPT_DIR/convert.sh" "$id" "$start" "$end" mp3 "$out"
 }
 
 interactive_add_text_to_gif() {
@@ -617,11 +643,14 @@ interactive_add_audio_to_video() {
   audio="$(prompt_required "Input MP3/audio")"
   out="$(prompt_blank "Output path, blank for default")"
 
-  if [[ -n "$out" ]]; then
-    "$SCRIPT_DIR/video.sh" combine "$media" "$audio" "$out"
-  else
-    "$SCRIPT_DIR/video.sh" combine "$media" "$audio"
+  if [[ -z "$out" ]]; then
+    local stem
+    mkdir -p videos
+    stem="$(basename "$media")"
+    stem="${stem%.*}"
+    out="videos/${stem}-with-audio.mp4"
   fi
+  "$SCRIPT_DIR/audio_video.sh" "$media" 0:00 "" "$audio" "$out"
 }
 
 interactive_caption_youtube() {
@@ -781,6 +810,14 @@ while (($#)); do
       [[ $# -ge 2 ]] || die "--width requires a value"
       WIDTH="$2"
       shift 2
+      ;;
+    --crop)
+      [[ $# -ge 5 ]] || die "--crop requires x, y, width, and height"
+      CROP_X="$2"
+      CROP_Y="$3"
+      CROP_WIDTH="$4"
+      CROP_HEIGHT="$5"
+      shift 5
       ;;
     --start)
       [[ $# -ge 2 ]] || die "--start requires a value"

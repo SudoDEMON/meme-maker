@@ -7,13 +7,12 @@ cd "$REPO_ROOT"
 scripts=(
   "mememaker.sh"
   "lib.sh"
-  "video.sh"
-  "music.sh"
   "convert.sh"
   "audio_video.sh"
   "build.sh"
   "install.sh"
-  "Memes/mememaker.sh"
+  "install-linux.sh"
+  "install-macos.sh"
 )
 
 bash -n "${scripts[@]}"
@@ -22,18 +21,15 @@ node --check web.js
 node --check web/app.js
 
 ./mememaker.sh --help >/dev/null
-./video.sh --help >/dev/null
-./music.sh --help >/dev/null
 ./convert.sh --help >/dev/null
 ./audio_video.sh --help >/dev/null
 ./build.sh --help >/dev/null
 ./install.sh --help >/dev/null
+./install-linux.sh --help >/dev/null
+./install-macos.sh --help >/dev/null
 ./convert.sh --help | grep -q 'gif|mp3|mp4|webm'
 ./audio_video.sh --help | grep -q 'source-file-or-url-or-youtube-id'
 ./build.sh --help | grep -q 'webm'
-./video.sh --help | grep -q 'webm'
-./video.sh --help | grep -q '\[end\]'
-./music.sh --help | grep -q '\[end\]'
 ./mememaker.sh --help | grep -q '\[end\]'
 ./mememaker.sh --help | grep -q -- '--top-x'
 ./mememaker.sh --help | grep -q -- '--font-family'
@@ -43,8 +39,8 @@ node --check web/app.js
 ./mememaker.sh --help | grep -q -- '--start'
 ./mememaker.sh --help | grep -q -- '--top-font-size'
 ./mememaker.sh --help | grep -q -- '--bottom-font-family'
-./video.sh --help | grep -q 'supported by yt-dlp'
-./music.sh --help | grep -q 'supported by yt-dlp'
+./mememaker.sh --help | grep -q -- '--crop'
+./convert.sh --help | grep -q 'source-file-or-url-or-youtube-id'
 
 bash -c 'set -euo pipefail; source ./lib.sh; [[ "$(yt_dlp_section_range "0:00" "")" == "*0:00-inf" ]]; [[ "$(section_end_label "")" == "end" ]]; ! needs_yt_dlp_section "0:00" ""; needs_yt_dlp_section "0:10" ""; looks_like_time inf; looks_like_time 0.5; looks_like_time 0:00.5; [[ "$(yt_dlp_source_url "O0Dgtar0zB4")" == "https://www.youtube.com/watch?v=O0Dgtar0zB4" ]]; [[ "$(yt_dlp_source_url "https://example.com/video")" == "https://example.com/video" ]]'
 
@@ -92,18 +88,25 @@ chmod +x "$stub_bin/yt-dlp"
 cat >"$stub_bin/ffmpeg" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "${MM_TEST_FFMPEG_LOG:-}" ]]; then
+  printf '%s\n' "$*" >>"$MM_TEST_FFMPEG_LOG"
+fi
 out="${@: -1}"
 mkdir -p "$(dirname "$out")"
 printf 'encoded' >"$out"
 EOF
 chmod +x "$stub_bin/ffmpeg"
 
-MM_TEST_YTDLP_LOG="$tmp_dir/yt-dlp.log" PATH="$stub_bin:$PATH" ./video.sh e3zN3rn2g7M 0:00 "" "$tmp_dir/fort-3v1.mp4" >/dev/null
+MM_TEST_YTDLP_LOG="$tmp_dir/yt-dlp.log" PATH="$stub_bin:$PATH" ./convert.sh e3zN3rn2g7M 0:00 "" mp4 "$tmp_dir/fort-3v1.mp4" >/dev/null
 grep -q 'watch?v=e3zN3rn2g7M' "$tmp_dir/yt-dlp.log"
 if grep -q -- '--download-sections' "$tmp_dir/yt-dlp.log"; then
   echo "Expected blank end from 0:00 to skip --download-sections"
   exit 1
 fi
+
+printf 'media' >"$tmp_dir/input.mp4"
+MM_TEST_FFMPEG_LOG="$tmp_dir/ffmpeg.log" PATH="$stub_bin:$PATH" ./mememaker.sh --caption-local --crop 10 20 30 40 --width 30 "$tmp_dir/input.mp4" "$tmp_dir/cropped.mp4" "TOP" "" >/dev/null
+grep -q 'crop=30:40:10:20,scale=30:-2:flags=lanczos' "$tmp_dir/ffmpeg.log"
 
 ln -s "$REPO_ROOT/build.sh" "$tmp_dir/build"
 (cd "${TMPDIR:-/tmp}" && "$tmp_dir/build" --help >/dev/null)

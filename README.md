@@ -10,14 +10,11 @@ Now reasonably robust, portable, and easy to install on new machines, especially
 
 | Script          | Purpose                              | Notes |
 |-----------------|--------------------------------------|-------|
-| `mememaker.sh`  | yt-dlp source/local media → captioned GIF/MP4/WebM | Best one. Interactive menu + two-line text support |
-| `convert.sh`    | Download or convert source media      | GIF/MP3/MP4/WebM from local media or yt-dlp URLs |
-| `audio_video.sh` | Add local audio to local/remote video | MP4/WebM output with optional source trimming |
-| `video.sh`      | Download clips or combine media+audio | MP4/WebM encodes |
-| `music.sh`      | Extract trimmed audio (mp3)          | Great for stings & samples |
+| `convert.sh`    | Download or convert media formats    | Local media or remote source → GIF/MP3/MP4/WebM |
+| `mememaker.sh`  | Interactive meme and text workflow   | Menu + local/remote caption renderer |
+| `audio_video.sh` | Add audio to video/media            | Local/remote video + local audio → MP4/WebM |
 | `build.sh`      | HTML → video/GIF/PNG/WebM using puppeteer | Advanced: capture browser animations |
 | `lib.sh`        | Shared utilities                     | Used by the main scripts |
-| `Memes/mememaker.sh` | Old-school standalone version   | Self-contained, good for copying |
 
 ## Quick start (recommended)
 
@@ -27,12 +24,20 @@ cd meme-maker
 ./install.sh
 ```
 
+OS-specific installer entrypoints are available too:
+
+```bash
+./install-linux.sh
+./install-macos.sh
+powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+```
+
 The installer will:
 - Install `yt-dlp`, `ffmpeg`, fonts, and Node.js (where possible)
 - Symlink the tools into `~/.local/bin`
 - Optionally set up `npm` deps for `build.sh`
 
-After that you can just run `mememaker`, `video`, `music`, etc. from anywhere.
+After that you can just run `mememaker`, `meme-convert`, `audio-video`, etc. from anywhere.
 `convert.sh` is linked as `meme-convert` to avoid shadowing ImageMagick's
 common `convert` command.
 
@@ -84,14 +89,14 @@ browser security model intact while still giving a normal file chooser.
 The **Experimental** tab includes a visual media text editor. Input can be GIF,
 WebM, or MP4. Output is an output name plus a GIF/MP4/WebM dropdown. It loads a
 preview frame, shows resolution/length/FPS/frame count, lets you scrub with the
-slider or editable time/frame fields, drag two text fields into place, set
-optional output FPS, and trim output with Output Start/End. Output Start/End
-accept time values such as `0:01.5` or frame values such as `18f`, and Start
-must be before End. It renders the result as GIF, MP4, or WebM and passes the
-resulting x/y coordinates plus font face, bold, italic, underline,
-strikethrough, and size settings to the local caption renderer. If you browse
-or enter a repo-local font path, the preview text loads that font file in the
-browser before rendering.
+slider or editable time/frame fields, drag two text fields into place, drag the
+preview crop edges/corners, set optional output FPS, and trim output with Output
+Start/End. Output Start/End accept time values such as `0:01.5` or frame values
+such as `18f`, and Start must be before End. It renders the result as GIF, MP4,
+or WebM and passes the crop rectangle, resulting x/y coordinates, font face,
+bold, italic, underline, strikethrough, and size settings to the local caption
+renderer. If you browse or enter a repo-local font path, the preview text loads
+that font file in the browser before rendering.
 
 ```bash
 MM_WEB_PORT=3001 npm run web
@@ -106,7 +111,7 @@ with an authenticated server-side job queue or another remote-safe backend.
 ```bash
 # Make sure you have yt-dlp + ffmpeg + a decent font
 ./mememaker.sh --help
-./video.sh --help
+./convert.sh --help
 ```
 
 ## Requirements
@@ -132,8 +137,10 @@ brew install yt-dlp ffmpeg node
 # Launch the interactive menu
 ./mememaker.sh
 
-# Convert a local or remote source to a chosen format
+# Download or convert a local/remote source to a chosen format
 ./convert.sh O0Dgtar0zB4 0:00 0:20 mp4 videos/clip.mp4
+./convert.sh https://youtu.be/O0Dgtar0zB4 0:00 "" gif gifs/clip.gif
+./convert.sh O0Dgtar0zB4 0:00 "" mp3 Audio/clip.mp3
 ./convert.sh videos/input.mp4 0:05 "" gif gifs/input-cut.gif
 
 # Make a GIF with no caption text
@@ -141,7 +148,7 @@ brew install yt-dlp ffmpeg node
 
 # Omit end time to use the full video from start onward
 ./mememaker.sh O0Dgtar0zB4 0:00 gif "TOP" "BOTTOM" full_video.gif
-./video.sh O0Dgtar0zB4 0:00 full_video.mp4
+./convert.sh O0Dgtar0zB4 0:00 "" mp4 videos/full_video.mp4
 
 # Same thing, using the explicit no-text flag
 ./mememaker.sh --no-text O0Dgtar0zB4 0:00 0:20 webm boom_headshot_no_text
@@ -158,23 +165,26 @@ brew install yt-dlp ffmpeg node
 # Add text to a trimmed section of local media
 ./mememaker.sh --caption-local --start 0:05 --end 0:10 input.mp4 videos/input_captioned.mp4 "TOP" ""
 
+# Crop local media before captioning
+./mememaker.sh --caption-local --crop 80 20 480 360 --width 480 input.mp4 videos/input_cropped.mp4 "TOP" ""
+
 # Make a captioned GIF with a custom font
 ./mememaker.sh O0Dgtar0zB4 0:00 0:20 gif "BOOM" "HEADSHOT" boom_headshot_glitch.gif /path/to/font.ttf
 
 # Grab the audio clip
-./music.sh vXZu0wT1kUg 1:36 1:56 SPVCEODYSSEY_20sec.mp3
+./convert.sh vXZu0wT1kUg 1:36 1:56 mp3 Audio/SPVCEODYSSEY_20sec.mp3
 
 # Grab the video clip
-./video.sh O0Dgtar0zB4 0:00 0:20 boom_headshot_vid.mp4
+./convert.sh O0Dgtar0zB4 0:00 0:20 mp4 videos/boom_headshot_vid.mp4
 
 # yt-dlp-supported URLs work too
-./video.sh "<yt-dlp-supported-url>" 0:00 "" supported-media.mp4
+./convert.sh "<yt-dlp-supported-url>" 0:00 "" mp4 videos/supported-media.mp4
 
 # Grab a WebM clip
-./video.sh O0Dgtar0zB4 0:00 0:20 boom_headshot_vid.webm
+./convert.sh O0Dgtar0zB4 0:00 0:20 webm videos/boom_headshot_vid.webm
 
 # Combine a local MP4 with MP3 audio into a new MP4
-./video.sh /path/to/file/meme-maker/boom_headshot_vid.mp4 /path/to/file/meme-maker/SPVCEODYSSEY_20sec.mp3
+./audio_video.sh /path/to/file/meme-maker/boom_headshot_vid.mp4 0:00 "" /path/to/file/meme-maker/SPVCEODYSSEY_20sec.mp3 videos/boom_headshot_with_audio.mp4
 
 # Add local audio to a remote or local video source
 ./audio_video.sh O0Dgtar0zB4 0:00 0:20 Audio/sting.mp3 videos/clip-with-audio.mp4
@@ -184,13 +194,12 @@ brew install yt-dlp ffmpeg node
 ```
 
 - `mememaker` will create `gifs/` or `videos/` as needed and name the file after the media source (or your custom stem) + the right extension.
-- Without an explicit output, `video` and `music` use `videos/` and `Audio/`.
-- Passing an explicit output filename (as the last argument) gives you full control over path and name. `video.sh` accepts custom MP4/WebM names. Names without `.mp4` or `.webm` default to `.mp4`.
-- `convert.sh` requires an explicit output and accepts `gif`, `mp3`, `mp4`, or `webm`.
+- `convert.sh` is the general download/convert entrypoint. It requires an explicit output and accepts `gif`, `mp3`, `mp4`, or `webm`.
+- `audio_video.sh` is the general add-audio entrypoint for local/remote media plus a local audio file.
 - Caption text can be blank: use `"" ""` or `--no-text`. In the interactive menu, leave text prompts blank for no text.
 - End time can be blank/omitted to use everything from the start time through the end of the video. Internally this uses yt-dlp's `inf` section end when a section is still needed.
 - `--top-y`, `--bottom-y`, `--font-size`, `--width`, and `--fps` control caption placement and output sizing.
-- `--top-x`, `--bottom-x`, `--bottom-from-top`, `--font-family`, `--bold`, `--italic`, `--underline`, and `--strikethrough` are available for the experimental visual editor and advanced caption placement.
+- `--top-x`, `--bottom-x`, `--bottom-from-top`, `--crop`, `--font-family`, `--bold`, `--italic`, `--underline`, and `--strikethrough` are available for the experimental visual editor and advanced caption placement.
 - `--top-font-family`, `--top-font-size`, `--top-bold`, `--top-italic`, `--bottom-font-family`, `--bottom-font-size`, `--bottom-bold`, and `--bottom-italic` control the two caption lines independently.
 - In `--caption-local` mode, `--start` and `--end` trim the local source before captioning. Seconds can include decimals, such as `0.5`.
 
@@ -222,19 +231,18 @@ Or just copy the files and run the individual scripts directly.
 ```
 .
 ├── lib.sh              # Shared helpers (don't run directly)
-├── mememaker.sh        # Main meme tool (the good one)
 ├── convert.sh          # Local/remote media → GIF/MP3/MP4/WebM
+├── mememaker.sh        # Interactive menu + full caption renderer
 ├── audio_video.sh      # Local/remote media + local audio → MP4/WebM
-├── video.sh
-├── music.sh
 ├── build.sh            # HTML → video using puppeteer
 ├── capture.js
 ├── web.js              # Local web UI server
 ├── web/                # Static browser UI
 ├── install.sh          # The magic migration/installer
+├── install-linux.sh
+├── install-macos.sh
+├── install-windows.ps1
 ├── package.json
-├── Memes/
-│   └── mememaker.sh    # Old standalone/self-contained version
 └── README.md
 ```
 
