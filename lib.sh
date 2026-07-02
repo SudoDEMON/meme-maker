@@ -38,6 +38,13 @@ info()   { echo "${GREEN}•${RESET} $*"; }
 success(){ echo "${GREEN}✅${RESET} $*"; }
 debug()  { [[ "${MM_DEBUG:-0}" == "1" ]] && echo "${BLUE}dbg:${RESET} $*" >&2; }
 
+is_false_env() {
+  case "${1:-}" in
+    0|false|False|FALSE|no|No|NO|off|Off|OFF) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # ── Dependency checker ───────────────────────────────────────────────────────
 check_deps() {
   local missing=()
@@ -50,6 +57,16 @@ check_deps() {
     die "Missing required tools: ${missing[*]}\nInstall them and try again."
   fi
 }
+
+# yt-dlp can hang on machines with flaky IPv6 routes because Python may try an
+# IPv6 address before falling back. Prefer IPv4 by default, but keep it tunable.
+declare -a MM_YTDLP_ARGS=()
+if ! is_false_env "${MM_YTDLP_FORCE_IPV4:-1}"; then
+  MM_YTDLP_ARGS+=(--force-ipv4)
+fi
+if [[ -n "${MM_YTDLP_SOCKET_TIMEOUT:-15}" && "${MM_YTDLP_SOCKET_TIMEOUT:-15}" != "0" ]]; then
+  MM_YTDLP_ARGS+=(--socket-timeout "${MM_YTDLP_SOCKET_TIMEOUT:-15}")
+fi
 
 # ── Temp file / dir management with auto-cleanup ─────────────────────────────
 MM_TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mm.XXXXXX")"

@@ -497,7 +497,7 @@ run_youtube_mode() {
   fi
 
   local -a yt_args
-  yt_args=(-f "bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best" --merge-output-format mp4 --force-overwrites -o "$clip_src")
+  yt_args=("${MM_YTDLP_ARGS[@]}" -f "bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best" --merge-output-format mp4 --force-overwrites -o "$clip_src")
   if needs_yt_dlp_section "$start" "$end"; then
     yt_args+=(--download-sections "$section_range" --force-keyframes-at-cuts)
   fi
