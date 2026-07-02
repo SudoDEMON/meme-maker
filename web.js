@@ -298,6 +298,22 @@ function ytDlpProbeSource(value) {
   throw new Error('Source must be a local file, a YouTube ID, or a supported media URL.');
 }
 
+function isFalseEnv(value) {
+  return /^(?:0|false|no|off)$/i.test(clean(value));
+}
+
+function ytDlpNetworkArgs() {
+  const args = [];
+  if (!isFalseEnv(process.env.MM_YTDLP_FORCE_IPV4 || '1')) {
+    args.push('--force-ipv4');
+  }
+  const socketTimeout = clean(process.env.MM_YTDLP_SOCKET_TIMEOUT || '15');
+  if (socketTimeout && socketTimeout !== '0') {
+    args.push('--socket-timeout', socketTimeout);
+  }
+  return args;
+}
+
 function resolveJobSource(value, label = 'Source') {
   const raw = clean(value);
   if (!raw) {
@@ -682,6 +698,7 @@ function remoteMediaInfo(info, raw, remote) {
 function remoteFrameMetadata(value) {
   const remote = ytDlpProbeSource(value);
   const probe = spawnSync('yt-dlp', [
+    ...ytDlpNetworkArgs(),
     '--dump-single-json',
     '--skip-download',
     '--no-warnings',
@@ -743,6 +760,7 @@ async function sourceInfo(value) {
 
   const remote = ytDlpProbeSource(raw);
   const { stdout } = await runCapture('yt-dlp', [
+    ...ytDlpNetworkArgs(),
     '--dump-single-json',
     '--skip-download',
     '--no-warnings',
@@ -760,6 +778,7 @@ async function downloadRemotePreviewClip(input, seconds) {
   const start = Math.max(0, Number(seconds) || 0);
   const end = start + 1;
   const args = [
+    ...ytDlpNetworkArgs(),
     '-f', 'bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best',
     '--merge-output-format', 'mp4',
     '--force-overwrites',

@@ -59,7 +59,7 @@ download_remote_video() {
   section_range="$(yt_dlp_section_range "$start" "$end")"
 
   local -a yt_args
-  yt_args=(-f "bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best" --merge-output-format mp4 --force-overwrites -o "$src")
+  yt_args=("${MM_YTDLP_ARGS[@]}" -f "bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best" --merge-output-format mp4 --force-overwrites -o "$src")
   if needs_yt_dlp_section "$start" "$end"; then
     info "Downloading section $start -> $end_label from $source..." >&2
     yt_args+=(--download-sections "$section_range" --force-keyframes-at-cuts)

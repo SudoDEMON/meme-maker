@@ -215,6 +215,8 @@ All scripts support `-h` / `--help`.
 - `MM_FONT_SIZE=50` / `MM_WIDTH=720` — default caption size and output width for `mememaker`
 - `MM_BUILD_FPS=60` — frame rate for `build.sh` captures and encodes
 - `MM_OUTPUT_FPS=30` — optional forced output frame rate for `mememaker`
+- `MM_YTDLP_FORCE_IPV4=0` — allow yt-dlp to use IPv6 too; by default meme-maker passes `--force-ipv4` to avoid hangs on flaky IPv6 routes
+- `MM_YTDLP_SOCKET_TIMEOUT=15` — socket timeout, in seconds, passed to yt-dlp; set `0` to use yt-dlp's default
 - `MM_WEBM_CRF=34` — WebM quality/speed target; lower is higher quality and slower
 - `MM_WEBM_CPU_USED=5` — WebM VP9 speed setting; higher is faster with lower compression quality
 - `MM_WEBM_TILE_COLUMNS=2` — WebM VP9 tiling for parallel encoding

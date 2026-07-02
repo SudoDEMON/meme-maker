@@ -64,10 +64,10 @@ download_remote_source() {
 
   if [[ "$type" == "mp3" ]]; then
     src="$(make_temp_name --ext mp3)"
-    YT_ARGS=(-x --audio-format mp3 --audio-quality 0 --force-overwrites -o "$src")
+    YT_ARGS=("${MM_YTDLP_ARGS[@]}" -x --audio-format mp3 --audio-quality 0 --force-overwrites -o "$src")
   else
     src="$(make_temp_name --ext mp4)"
-    YT_ARGS=(-f "bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best" --merge-output-format mp4 --force-overwrites -o "$src")
+    YT_ARGS=("${MM_YTDLP_ARGS[@]}" -f "bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best" --merge-output-format mp4 --force-overwrites -o "$src")
   fi
 
   if needs_yt_dlp_section "$start" "$end"; then
