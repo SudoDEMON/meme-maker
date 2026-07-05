@@ -15,6 +15,8 @@ const PORT = Number(process.env.MM_WEB_PORT || process.env.PORT || 3001);
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_UPLOAD_BYTES = Number(process.env.MM_WEB_MAX_UPLOAD_BYTES || 500 * 1024 * 1024);
 const SOURCE_INFO_TIMEOUT_MS = Number(process.env.MM_WEB_SOURCE_INFO_TIMEOUT_MS || 15000);
+const LOCAL_VIDEO_INPUT_EXTS = ['gif', 'mov', 'mp4', 'webm'];
+const LOCAL_VIDEO_INPUT_EXTS_WITH_DOTS = LOCAL_VIDEO_INPUT_EXTS.map(ext => `.${ext}`);
 
 const jobs = new Map();
 let defaultFontCache = null;
@@ -25,6 +27,7 @@ const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.mov': 'video/quicktime',
   '.mp3': 'audio/mpeg',
   '.mp4': 'video/mp4',
   '.otf': 'font/otf',
@@ -208,6 +211,13 @@ function outputStem(value, fallback) {
 
 function repoPath(...parts) {
   return path.join(REPO_ROOT, ...parts);
+}
+
+function spawnCommand(cmd, args) {
+  if (process.platform === 'win32' && path.extname(cmd).toLowerCase() === '.sh') {
+    return { cmd: 'bash', args: [cmd, ...args] };
+  }
+  return { cmd, args };
 }
 
 function publicFileUrl(outputPath) {
@@ -811,8 +821,8 @@ async function createPreviewFrame(input, time = '0') {
   if (local) {
     source = resolveInputPath(input, 'Preview input');
     const ext = path.extname(source).toLowerCase();
-    if (!['.gif', '.mp4', '.webm'].includes(ext)) {
-      throw new Error('Preview input must be a supported URL or a GIF, MP4, or WebM file.');
+    if (!LOCAL_VIDEO_INPUT_EXTS_WITH_DOTS.includes(ext)) {
+      throw new Error('Preview input must be a supported URL or a GIF, MOV, MP4, or WebM file.');
     }
   } else {
     source = await downloadRemotePreviewClip(input, seconds);
@@ -903,7 +913,7 @@ function buildJob(action, fields) {
       const inputPath = sourceIsLocal ? resolveInputPath(input, 'Input media') : '';
       const source = sourceIsLocal ? inputPath : resolveJobSource(input, 'Input media');
       if (sourceIsLocal) {
-        validateMediaInputExtension(input, ['gif', 'webm', 'mp4'], 'Input media');
+        validateMediaInputExtension(input, LOCAL_VIDEO_INPUT_EXTS, 'Input media');
       }
       const requestedFormat = optional(data, 'format') || 'gif';
       validateFormat(requestedFormat, ['gif', 'mp4', 'webm']);
@@ -1162,7 +1172,8 @@ function startJob(action, fields) {
     command: displayCommand
   });
 
-  const child = spawn(job.cmd, job.args, {
+  const spawnSpec = spawnCommand(job.cmd, job.args);
+  const child = spawn(spawnSpec.cmd, spawnSpec.args, {
     cwd: REPO_ROOT,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe']

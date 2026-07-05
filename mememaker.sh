@@ -58,7 +58,7 @@ Usage:
   ./mememaker.sh
   ./mememaker.sh [options] <youtube-id-or-url> <start> [end] <gif|mp4|webm> "<top text>" "<bottom text>" [custom-name] [font-path]
   ./mememaker.sh --no-text [options] <youtube-id-or-url> <start> [end] <gif|mp4|webm> [custom-name]
-  ./mememaker.sh --caption-local [options] <input.(gif|mp4|webm)> <output.(gif|mp4|webm)> "<top text>" "<bottom text>" [font-path]
+  ./mememaker.sh --caption-local [options] <input.(gif|mov|mp4|webm)> <output.(gif|mp4|webm)> "<top text>" "<bottom text>" [font-path]
 
 Options:
   --no-text             Skip captions. Also accepts "" "" as empty captions.
@@ -87,7 +87,7 @@ Options:
                          Crop local/cleaned media before scaling and captions.
   --start <time>        Local caption start time. Default: 0:00
   --end <time>          Local caption end time. Blank means end of media.
-  --caption-local       Add captions to a local GIF/MP4/WebM instead of downloading.
+  --caption-local       Add captions to a local GIF/MOV/MP4/WebM instead of downloading.
   -h, --help            Show this help.
 
 Examples:
@@ -526,7 +526,7 @@ run_youtube_mode() {
 run_caption_local_mode() {
   local input out type top bottom font_arg caption_filter
 
-  [[ $# -ge 4 && $# -le 5 ]] || die "Usage: mememaker.sh --caption-local [options] <input.(gif|mp4|webm)> <output.(gif|mp4|webm)> \"top\" \"bottom\" [font]"
+  [[ $# -ge 4 && $# -le 5 ]] || die "Usage: mememaker.sh --caption-local [options] <input.(gif|mov|mp4|webm)> <output.(gif|mp4|webm)> \"top\" \"bottom\" [font]"
 
   input=$1
   out=$2
@@ -639,7 +639,7 @@ interactive_add_text_to_gif() {
 
 interactive_add_audio_to_video() {
   local media audio out
-  media="$(prompt_required "Input GIF/MP4/WebM")"
+  media="$(prompt_required "Input GIF/MOV/MP4/WebM")"
   audio="$(prompt_required "Input MP3/audio")"
   out="$(prompt_blank "Output path, blank for default")"
 

@@ -87,7 +87,7 @@ that uploaded local path for GIF/video/audio/font/HTML inputs. This keeps the
 browser security model intact while still giving a normal file chooser.
 
 The **Experimental** tab includes a visual media text editor. Input can be a
-local GIF/WebM/MP4, a YouTube URL/ID, or another URL supported by the installed
+local GIF/MOV/MP4/WebM, a YouTube URL/ID, or another URL supported by the installed
 `yt-dlp`. Output is an output name plus a GIF/MP4/WebM dropdown. It loads a
 preview frame, shows resolution/length/FPS/frame count, lets you scrub with the
 slider or editable time/frame fields, drag two text fields into place, drag the
@@ -166,6 +166,9 @@ brew install yt-dlp ffmpeg node
 
 # Add text to a trimmed section of local media
 ./mememaker.sh --caption-local --start 0:05 --end 0:10 input.mp4 videos/input_captioned.mp4 "TOP" ""
+
+# MOV inputs work too when your ffmpeg build can decode the file's codecs
+./mememaker.sh --caption-local --start 0:05 --end 0:10 input.mov videos/input_mov_captioned.mp4 "TOP" ""
 
 # Crop local media before captioning
 ./mememaker.sh --caption-local --crop 80 20 480 360 --width 480 input.mp4 videos/input_cropped.mp4 "TOP" ""

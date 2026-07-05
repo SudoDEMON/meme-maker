@@ -5,7 +5,7 @@ const tools = [
     id: 'download-convert',
     title: 'Download or Convert',
     fields: [
-      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mp4,.webm,.mp3,.wav,.m4a,.aac,.ogg,image/gif,video/mp4,video/webm,audio/*', sourceProbe: true },
+      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mov,.mp4,.webm,.mp3,.wav,.m4a,.aac,.ogg,image/gif,video/quicktime,video/mp4,video/webm,audio/*', sourceProbe: true },
       { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
       { name: 'end', label: 'End', span: 'quarter', placeholder: 'End time' },
       { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['gif', 'GIF'], ['mp3', 'MP3'], ['webm', 'WebM']] },
@@ -16,7 +16,7 @@ const tools = [
     id: 'text-to-media',
     title: 'Text to Media',
     fields: [
-      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mp4,.webm,image/gif,video/mp4,video/webm', sourceProbe: true },
+      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mov,.mp4,.webm,image/gif,video/quicktime,video/mp4,video/webm', sourceProbe: true },
       { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
       { name: 'end', label: 'End', span: 'quarter', placeholder: 'End time' },
       { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['gif', 'GIF'], ['mp4', 'MP4'], ['webm', 'WebM']] },
@@ -39,7 +39,7 @@ const tools = [
     id: 'audio-to-video',
     title: 'Audio to Video',
     fields: [
-      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mp4,.webm,image/gif,video/mp4,video/webm', sourceProbe: true },
+      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mov,.mp4,.webm,image/gif,video/quicktime,video/mp4,video/webm', sourceProbe: true },
       { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
       { name: 'end', label: 'End', span: 'quarter', placeholder: 'End time' },
       { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['webm', 'WebM']] },
@@ -334,12 +334,12 @@ function renderExperimentalEditor() {
     <div class="experimental-editor">
       <div class="field-grid">
         <div class="field full">
-          <label for="input">Input: URL / GIF / MP4 / WebM</label>
+          <label for="input">Input: URL / GIF / MOV / MP4 / WebM</label>
           <div class="file-field">
-            <input id="input" name="input" type="text" placeholder="YouTube, Twitter/X, or local GIF/MP4/WebM" required>
+            <input id="input" name="input" type="text" placeholder="YouTube, Twitter/X, or local GIF/MOV/MP4/WebM" required>
             <label class="file-button">
               Browse
-              <input type="file" data-upload-for="input" accept=".gif,.webm,.mp4,image/gif,video/webm,video/mp4">
+              <input type="file" data-upload-for="input" accept=".gif,.mov,.webm,.mp4,image/gif,video/quicktime,video/webm,video/mp4">
             </label>
           </div>
           <div class="field-status" data-upload-status-for="input">Input properties: Resolution • Length • Frames • FPS</div>

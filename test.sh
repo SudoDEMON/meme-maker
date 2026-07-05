@@ -68,7 +68,7 @@ cleanup_test() {
     kill "$web_pid" 2>/dev/null || true
     wait "$web_pid" 2>/dev/null || true
   fi
-  rm -f "$REPO_ROOT/videos/mm-test-remote-blank.mp4"
+  rm -f "$REPO_ROOT/videos/mm-test-remote-blank.mp4" "$REPO_ROOT/videos/mm-test-local-mov.mp4"
   rm -rf "$tmp_dir"
 }
 trap cleanup_test EXIT
@@ -122,6 +122,7 @@ if grep -q -- '--download-sections' "$tmp_dir/yt-dlp.log"; then
 fi
 
 printf 'media' >"$tmp_dir/input.mp4"
+printf 'media' >"$tmp_dir/input.mov"
 MM_TEST_FFMPEG_LOG="$tmp_dir/ffmpeg.log" PATH="$stub_bin:$PATH" ./mememaker.sh --caption-local --crop 10 20 30 40 --width 30 "$tmp_dir/input.mp4" "$tmp_dir/cropped.mp4" "TOP" "" >/dev/null
 grep -q 'crop=30:40:10:20,scale=30:-2:flags=lanczos' "$tmp_dir/ffmpeg.log"
 
@@ -134,8 +135,9 @@ fi
 web_port="$(node -e "const net=require('net');const s=net.createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
 MM_WEB_PORT="$web_port" MM_TEST_YTDLP_LOG="$tmp_dir/web-yt-dlp.log" PATH="$stub_bin:$PATH" node web.js >"$tmp_dir/web.log" 2>&1 &
 web_pid=$!
-node - "$web_port" <<'NODE'
+node - "$web_port" "$tmp_dir/input.mov" <<'NODE'
 const port = process.argv[2];
+const movInput = process.argv[3];
 const base = `http://127.0.0.1:${port}`;
 
 async function sleep(ms) {
@@ -212,6 +214,43 @@ async function getJson(path) {
   if (created.outputPath !== 'videos/mm-test-remote-blank.mp4') {
     throw new Error(`unexpected output path: ${created.outputPath}`);
   }
+
+  const movCreated = await postJson('/api/jobs', {
+    action: 'experimental-gif-editor',
+    fields: {
+      input: movInput,
+      output: 'mm-test-local-mov',
+      format: 'mp4',
+      topText: '',
+      bottomText: '',
+      topX: '0',
+      topY: '0',
+      bottomX: '0',
+      bottomY: '0',
+      width: '320',
+      cropX: '0',
+      cropY: '0',
+      cropWidth: '0',
+      cropHeight: '0'
+    }
+  });
+  if (movCreated.outputPath !== 'videos/mm-test-local-mov.mp4') {
+    throw new Error(`unexpected MOV output path: ${movCreated.outputPath}`);
+  }
+
+  async function waitForCompleteJob(id, label) {
+    let job = null;
+    for (let i = 0; i < 50; i += 1) {
+      job = await getJson(`/api/jobs/${id}`);
+      if (job.status !== 'running') break;
+      await sleep(100);
+    }
+    if (!job || job.status !== 'complete') {
+      throw new Error(`${label} job status: ${job && job.status}`);
+    }
+  }
+
+  await waitForCompleteJob(movCreated.id, 'local MOV Experimental');
 
   let job = null;
   for (let i = 0; i < 50; i += 1) {
