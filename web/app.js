@@ -1275,6 +1275,32 @@ async function uploadFile(file, targetName) {
   return body;
 }
 
+function fileFieldForTarget(targetName) {
+  const picker = toolForm.querySelector(`[data-upload-for="${CSS.escape(targetName)}"]`);
+  return picker ? picker.closest('.file-field') : null;
+}
+
+async function handleSelectedFile(file, targetName) {
+  if (!file || !targetName) return null;
+
+  const field = fileFieldForTarget(targetName);
+  if (field) field.classList.remove('is-dragging');
+
+  await uploadFile(file, targetName);
+  const targetInput = toolForm.querySelector(`[name="${CSS.escape(targetName)}"]`);
+  if (targetInput && targetInput.matches('[data-source-probe]')) {
+    return probeSource(targetInput);
+  }
+  if (activeTool.id === 'experimental-gif-editor' && targetName === 'input') {
+    return loadExperimentalPreview();
+  }
+  if (activeTool.id === 'experimental-gif-editor' && targetName === 'fontPath') {
+    applyExperimentalStyles();
+    refreshExperimentalPositions();
+  }
+  return null;
+}
+
 async function createJob() {
   if (eventSource) {
     eventSource.close();
@@ -1415,20 +1441,47 @@ toolForm.addEventListener('change', event => {
 
   const file = picker.files[0];
   const targetName = picker.dataset.uploadFor;
-  uploadFile(file, targetName).then(() => {
-    const targetInput = toolForm.querySelector(`[name="${CSS.escape(targetName)}"]`);
-    if (targetInput && targetInput.matches('[data-source-probe]')) {
-      return probeSource(targetInput);
-    }
-    if (activeTool.id === 'experimental-gif-editor' && targetName === 'input') {
-      return loadExperimentalPreview();
-    }
-    if (activeTool.id === 'experimental-gif-editor' && targetName === 'fontPath') {
-      applyExperimentalStyles();
-      refreshExperimentalPositions();
-    }
-    return null;
-  }).catch(err => {
+  handleSelectedFile(file, targetName).catch(err => {
+    setUploadStatus(targetName, err.message, 'error');
+    appendLog(`${err.message}\n`);
+  }).finally(() => {
+    picker.value = '';
+  });
+});
+
+toolForm.addEventListener('dragenter', event => {
+  const field = event.target.closest('.file-field');
+  const picker = field && field.querySelector('[data-upload-for]');
+  if (!picker || !event.dataTransfer || !Array.from(event.dataTransfer.types || []).includes('Files')) return;
+  event.preventDefault();
+  field.classList.add('is-dragging');
+});
+
+toolForm.addEventListener('dragover', event => {
+  const field = event.target.closest('.file-field');
+  const picker = field && field.querySelector('[data-upload-for]');
+  if (!picker || !event.dataTransfer) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+  field.classList.add('is-dragging');
+});
+
+toolForm.addEventListener('dragleave', event => {
+  const field = event.target.closest('.file-field');
+  if (!field || field.contains(event.relatedTarget)) return;
+  field.classList.remove('is-dragging');
+});
+
+toolForm.addEventListener('drop', event => {
+  const field = event.target.closest('.file-field');
+  const picker = field && field.querySelector('[data-upload-for]');
+  if (!picker || !event.dataTransfer || event.dataTransfer.files.length === 0) return;
+
+  event.preventDefault();
+  const targetName = picker.dataset.uploadFor;
+  const file = event.dataTransfer.files[0];
+  field.classList.remove('is-dragging');
+  handleSelectedFile(file, targetName).catch(err => {
     setUploadStatus(targetName, err.message, 'error');
     appendLog(`${err.message}\n`);
   });

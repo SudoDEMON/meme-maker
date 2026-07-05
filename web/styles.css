@@ -447,6 +447,15 @@ h2 {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   min-width: 0;
+  border-radius: 8px;
+  outline: 1px solid transparent;
+  outline-offset: 3px;
+  transition: outline-color 120ms ease, background 120ms ease;
+}
+
+.file-field.is-dragging {
+  background: rgba(23, 147, 209, 0.08);
+  outline-color: rgba(66, 200, 255, 0.74);
 }
 
 .file-button {
