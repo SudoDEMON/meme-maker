@@ -47,7 +47,7 @@ common `convert` command.
 npm run web
 ```
 
-Open `http://127.0.0.1:3000`.
+Open `http://127.0.0.1:3001`.
 
 The web UI runs the same local scripts as the CLI and streams `yt-dlp` / `ffmpeg`
 logs in the browser. By default it binds to `127.0.0.1` for local-only use.
