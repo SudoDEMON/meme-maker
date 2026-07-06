@@ -1,33 +1,27 @@
 # Meme Maker Code Review
 
-Date: 2026-06-28
+Date: 2026-07-02
 
-Scope: current WIP after Experimental blank-text and online-media support.
+Scope: current state after addressing the 2026-07-02 review findings.
 
 ## Findings
 
-1. **Medium: `/files` and `/download` still serve any repository file.**
-
-   `publicFileUrl()` and `publicDownloadUrl()` only create links for expected outputs (`web.js:213`, `web.js:225`), but the request handler still accepts any repo-relative path under `/files/` or `/download/` and serves it from `REPO_ROOT` (`web.js:1219`, `web.js:1391`, `web.js:1396`). This is mostly contained by the default `127.0.0.1` bind, but it should be restricted before any broader host binding.
-
-   Recommended fix: keep an allowlist of job output paths and uploaded/preview assets, or issue opaque per-file IDs instead of accepting raw repository paths.
-
-2. **Low: remote Experimental preview scrubbing can repeatedly download one-second clips.**
-
-   Remote preview now works by running `yt-dlp --download-sections` for the requested second, then extracting a PNG (`web.js:756`, `web.js:785`). This keeps implementation simple and accurate enough for local use, but rapid scrubbing on long or slow remote sources may be noticeably slow.
-
-   Recommended fix: add a small per-source preview cache or a cancellable preview worker so repeated scrubs reuse the same downloaded clip/window.
+No blocking findings in the current review pass.
 
 ## Fixed Or Verified
 
+- Web job cancellation now signals the spawned process group and escalates to SIGKILL if needed, so active ffmpeg/yt-dlp children are not left running after Cancel.
+- `/files` and `/download` now serve only paths registered by the current server process through generated job/upload/preview links. Arbitrary repo-relative paths such as `/files/README.md` return `404`.
+- Remote Experimental preview clips are cached by normalized source and integer-second window; repeated scrub requests within the same second reuse the same short yt-dlp download.
+- Experimental preview status now distinguishes online preview clip fetching from local preview frame rendering.
+- Remote Experimental preview yt-dlp/ffmpeg helper processes have a configurable timeout via `MM_WEB_PREVIEW_TIMEOUT_MS`.
+- Experimental crop size is now independent from output width; the tab has an explicit Output width field and crop dragging no longer rewrites it.
 - Experimental Text 1 and Text 2 can both be blank; blank renders skip drawtext filters.
 - Experimental input now accepts local GIF/MP4/WebM plus YouTube IDs/URLs and other installed-`yt-dlp` supported URLs.
 - Malformed percent-encoded `/files` or static paths now return `400` instead of falling into the generic `500` handler.
 - Decimal zero starts such as `0.0` and `0:00.0` now skip yt-dlp section mode like `0:00`.
+- Validation passed: `npm test`, `npm run doctor`, `bash -n`, `node --check web.js`, `node --check web/app.js`, and `git diff --check`.
 
 ## Top Experimental Recommendations
 
-1. Add output-file allowlisting/opaque IDs before exposing the web server beyond localhost.
-2. Cache or cancel remote preview extraction so scrubbing online media feels responsive.
-3. Split crop width from final output width in the UI; right now crop width also drives output width.
-4. Add progress/status text specific to remote preview downloads, separate from final render logs.
+1. Consider request-level cancellation for remote preview work if the browser aborts a fetch mid-download.

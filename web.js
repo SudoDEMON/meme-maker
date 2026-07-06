@@ -17,8 +17,12 @@ const MAX_UPLOAD_BYTES = Number(process.env.MM_WEB_MAX_UPLOAD_BYTES || 500 * 102
 const SOURCE_INFO_TIMEOUT_MS = Number(process.env.MM_WEB_SOURCE_INFO_TIMEOUT_MS || 15000);
 const LOCAL_VIDEO_INPUT_EXTS = ['gif', 'mov', 'mp4', 'webm'];
 const LOCAL_VIDEO_INPUT_EXTS_WITH_DOTS = LOCAL_VIDEO_INPUT_EXTS.map(ext => `.${ext}`);
+const PREVIEW_PROCESS_TIMEOUT_MS = Number(process.env.MM_WEB_PREVIEW_TIMEOUT_MS || 45000);
+const MAX_REMOTE_PREVIEW_CACHE_ENTRIES = Number(process.env.MM_WEB_PREVIEW_CACHE_ENTRIES || 24);
 
 const jobs = new Map();
+const publicPaths = new Set();
+const remotePreviewCache = new Map();
 let defaultFontCache = null;
 
 const MIME = {
@@ -220,7 +224,7 @@ function spawnCommand(cmd, args) {
   return { cmd, args };
 }
 
-function publicFileUrl(outputPath) {
+function repoRelativePath(outputPath) {
   if (!outputPath) return null;
 
   const resolved = path.resolve(REPO_ROOT, outputPath);
@@ -229,19 +233,23 @@ function publicFileUrl(outputPath) {
     return null;
   }
 
-  return `/files/${rel.split(path.sep).map(encodeURIComponent).join('/')}`;
+  return rel.split(path.sep).join('/');
+}
+
+function publicUrl(prefix, outputPath) {
+  const rel = repoRelativePath(outputPath);
+  if (!rel) return null;
+
+  publicPaths.add(rel);
+  return `${prefix}/${rel.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+function publicFileUrl(outputPath) {
+  return publicUrl('/files', outputPath);
 }
 
 function publicDownloadUrl(outputPath) {
-  if (!outputPath) return null;
-
-  const resolved = path.resolve(REPO_ROOT, outputPath);
-  const rel = path.relative(REPO_ROOT, resolved);
-  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
-    return null;
-  }
-
-  return `/download/${rel.split(path.sep).map(encodeURIComponent).join('/')}`;
+  return publicUrl('/download', outputPath);
 }
 
 function extractYouTubeId(value) {
@@ -548,15 +556,48 @@ function runProcess(cmd, args, options = {}) {
     const child = spawn(cmd, args, {
       cwd: options.cwd || REPO_ROOT,
       env: process.env,
-      stdio: ['ignore', 'ignore', 'pipe']
+      stdio: ['ignore', 'ignore', 'pipe'],
+      detached: canSignalProcessGroup() && options.detached !== false
     });
     let stderr = '';
+    let settled = false;
+    let timeout = null;
+    let killTimeout = null;
+
+    function clearTimers() {
+      if (timeout) clearTimeout(timeout);
+      if (killTimeout) clearTimeout(killTimeout);
+      timeout = null;
+      killTimeout = null;
+    }
+
+    const timeoutMs = Number(options.timeoutMs || 0);
+    if (timeoutMs > 0) {
+      timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        signalChildTree(child, 'SIGTERM');
+        killTimeout = setTimeout(() => signalChildTree(child, 'SIGKILL'), 2000);
+        if (typeof killTimeout.unref === 'function') killTimeout.unref();
+        reject(new Error(`${path.basename(cmd)} timed out after ${timeoutMs}ms.`));
+      }, timeoutMs);
+      if (typeof timeout.unref === 'function') timeout.unref();
+    }
+
     child.stderr.on('data', chunk => {
       stderr += chunk.toString();
       if (stderr.length > 20000) stderr = stderr.slice(-20000);
     });
-    child.on('error', reject);
+    child.on('error', err => {
+      clearTimers();
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
     child.on('close', code => {
+      clearTimers();
+      if (settled) return;
+      settled = true;
       if (code === 0) {
         resolve();
       } else {
@@ -564,6 +605,25 @@ function runProcess(cmd, args, options = {}) {
       }
     });
   });
+}
+
+function canSignalProcessGroup() {
+  return process.platform !== 'win32';
+}
+
+function signalChildTree(child, signal = 'SIGTERM') {
+  if (!child || !child.pid) return false;
+  try {
+    if (canSignalProcessGroup()) {
+      process.kill(-child.pid, signal);
+    } else {
+      child.kill(signal);
+    }
+    return true;
+  } catch (err) {
+    if (err && err.code === 'ESRCH') return false;
+    throw err;
+  }
 }
 
 function runCapture(cmd, args, options = {}) {
@@ -785,8 +845,24 @@ async function downloadRemotePreviewClip(input, seconds) {
   const dir = path.join(UPLOAD_ROOT, 'previews');
   fs.mkdirSync(dir, { recursive: true });
   const target = path.join(dir, `${Date.now()}-${crypto.randomUUID()}-remote.mp4`);
-  const start = Math.max(0, Number(seconds) || 0);
+  const remote = ytDlpProbeSource(input);
+  const requestedSeconds = Math.max(0, Number(seconds) || 0);
+  const start = Math.floor(requestedSeconds);
   const end = start + 1;
+  const cacheKey = `${remote}\n${start}`;
+  const cached = remotePreviewCache.get(cacheKey);
+  if (cached && fs.existsSync(cached.path)) {
+    const stat = fs.statSync(cached.path);
+    if (stat.isFile() && stat.size > 0) {
+      cached.lastUsed = Date.now();
+      return {
+        path: cached.path,
+        seekSeconds: Math.max(0, requestedSeconds - start)
+      };
+    }
+    remotePreviewCache.delete(cacheKey);
+  }
+
   const args = [
     ...ytDlpNetworkArgs(),
     '-f', 'bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best',
@@ -796,19 +872,29 @@ async function downloadRemotePreviewClip(input, seconds) {
     '-o', target,
     '--download-sections', `*${start}-${end}`,
     '--force-keyframes-at-cuts',
-    ytDlpProbeSource(input)
+    remote
   ];
 
-  await runProcess('yt-dlp', args);
+  await runProcess('yt-dlp', args, { timeoutMs: PREVIEW_PROCESS_TIMEOUT_MS });
 
+  let mediaPath = target;
   if (!fs.existsSync(target) && fs.existsSync(`${target}.mp4`)) {
-    return `${target}.mp4`;
+    mediaPath = `${target}.mp4`;
   }
-  const stat = fs.existsSync(target) ? fs.statSync(target) : null;
+  const stat = fs.existsSync(mediaPath) ? fs.statSync(mediaPath) : null;
   if (!stat || !stat.isFile() || stat.size === 0) {
     throw new Error('yt-dlp produced no preview media for this source.');
   }
-  return target;
+  remotePreviewCache.set(cacheKey, {
+    path: mediaPath,
+    createdAt: Date.now(),
+    lastUsed: Date.now()
+  });
+  pruneRemotePreviewCache();
+  return {
+    path: mediaPath,
+    seekSeconds: Math.max(0, requestedSeconds - start)
+  };
 }
 
 async function createPreviewFrame(input, time = '0') {
@@ -825,9 +911,9 @@ async function createPreviewFrame(input, time = '0') {
       throw new Error('Preview input must be a supported URL or a GIF, MOV, MP4, or WebM file.');
     }
   } else {
-    source = await downloadRemotePreviewClip(input, seconds);
-    cleanupSource = source;
-    seekSeconds = 0;
+    const previewClip = await downloadRemotePreviewClip(input, seconds);
+    source = previewClip.path;
+    seekSeconds = previewClip.seekSeconds;
   }
 
   const dir = path.join(UPLOAD_ROOT, 'previews');
@@ -837,7 +923,7 @@ async function createPreviewFrame(input, time = '0') {
   if (seekSeconds > 0) args.push('-ss', String(seekSeconds));
   args.push('-i', source, '-frames:v', '1', '-update', '1', target);
   try {
-    await runProcess('ffmpeg', args);
+    await runProcess('ffmpeg', args, { timeoutMs: PREVIEW_PROCESS_TIMEOUT_MS });
   } finally {
     if (cleanupSource) fs.rm(cleanupSource, { force: true }, () => {});
   }
@@ -846,6 +932,29 @@ async function createPreviewFrame(input, time = '0') {
     path: rel,
     fileUrl: publicFileUrl(rel)
   };
+}
+
+function pruneRemotePreviewCache() {
+  const maxEntries = Math.max(0, Number(MAX_REMOTE_PREVIEW_CACHE_ENTRIES) || 0);
+  if (maxEntries === 0) {
+    for (const entry of remotePreviewCache.values()) {
+      fs.rm(entry.path, { force: true }, () => {});
+    }
+    remotePreviewCache.clear();
+    return;
+  }
+
+  for (const [key, entry] of remotePreviewCache) {
+    if (!fs.existsSync(entry.path)) remotePreviewCache.delete(key);
+  }
+
+  const entries = [...remotePreviewCache.entries()]
+    .sort((a, b) => (a[1].lastUsed || 0) - (b[1].lastUsed || 0));
+  while (entries.length > maxEntries) {
+    const [key, entry] = entries.shift();
+    remotePreviewCache.delete(key);
+    fs.rm(entry.path, { force: true }, () => {});
+  }
 }
 
 function buildJob(action, fields) {
@@ -938,7 +1047,7 @@ function buildJob(action, fields) {
       const outputFps = optionalPositiveNumber(data, 'outputFps', 'Output FPS');
       const metadata = sourceIsLocal ? localFrameMetadata(inputPath) : remoteFrameMetadata(input);
       const crop = parseCropFields(data, metadata);
-      const width = crop ? String(crop.width) : optionalInteger(data, 'width', 'Width', '720');
+      const width = optionalInteger(data, 'width', 'Width', '720');
       const outputStart = parseFrameBoundary(optional(data, 'outputStart'), metadata, { label: 'Output Start' });
       const outputEnd = parseFrameBoundary(optional(data, 'outputEnd'), metadata, { label: 'Output End' });
       const fontFamily = optional(data, 'fontFamily');
@@ -1136,6 +1245,18 @@ function emit(job, event, data) {
   }
 }
 
+function terminateJob(job) {
+  if (!job || !job.child || job.status !== 'running') return;
+  signalChildTree(job.child, 'SIGTERM');
+  if (job.killTimer) clearTimeout(job.killTimer);
+  job.killTimer = setTimeout(() => {
+    if (job.status === 'running') {
+      signalChildTree(job.child, 'SIGKILL');
+    }
+  }, 3000);
+  if (typeof job.killTimer.unref === 'function') job.killTimer.unref();
+}
+
 function startJob(action, fields) {
   const built = buildJob(action, fields);
   const id = crypto.randomUUID();
@@ -1157,6 +1278,7 @@ function startJob(action, fields) {
     clients: new Set(),
     events: [],
     child: null,
+    killTimer: null,
     cancelRequested: false
   };
 
@@ -1176,7 +1298,8 @@ function startJob(action, fields) {
   const child = spawn(spawnSpec.cmd, spawnSpec.args, {
     cwd: REPO_ROOT,
     env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: canSignalProcessGroup()
   });
   job.child = child;
   job.pid = child.pid;
@@ -1185,6 +1308,7 @@ function startJob(action, fields) {
   child.stderr.on('data', chunk => emit(job, 'log', { stream: 'stderr', text: chunk.toString() }));
 
   child.on('error', err => {
+    if (job.killTimer) clearTimeout(job.killTimer);
     job.status = 'failed';
     job.finishedAt = new Date().toISOString();
     emit(job, 'log', { stream: 'stderr', text: `${err.message}\n` });
@@ -1200,6 +1324,7 @@ function startJob(action, fields) {
   });
 
   child.on('close', (code, signal) => {
+    if (job.killTimer) clearTimeout(job.killTimer);
     job.exitCode = code;
     job.signal = signal;
     job.status = job.cancelRequested ? 'cancelled' : (code === 0 ? 'complete' : 'failed');
@@ -1259,6 +1384,11 @@ function serveOutputFile(req, res, requestPath, options = {}) {
 
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
     sendText(res, 403, 'Forbidden');
+    return;
+  }
+  const publicRel = relative.split(path.sep).join('/');
+  if (!publicPaths.has(publicRel)) {
+    sendText(res, 404, 'Not found');
     return;
   }
 
@@ -1390,7 +1520,7 @@ async function handleRequest(req, res) {
 
     if (job.child && job.status === 'running') {
       job.cancelRequested = true;
-      job.child.kill('SIGTERM');
+      terminateJob(job);
     }
     sendJson(res, 200, { ok: true, status: job.status });
     return;

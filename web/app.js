@@ -172,6 +172,11 @@ function normalizeSourceInput(value) {
   return raw;
 }
 
+function looksLikeRemoteSource(value) {
+  const raw = String(value || '').trim();
+  return /^[A-Za-z0-9_-]{11}$/.test(raw) || /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(raw);
+}
+
 function parseTimeValue(value, { allowBlank = false, allowInf = false, label = 'Time' } = {}) {
   const raw = String(value || '').trim();
   if (!raw) {
@@ -360,6 +365,10 @@ function renderExperimentalEditor() {
           <label for="outputFps">Output FPS</label>
           <input id="outputFps" name="outputFps" type="number" min="0.1" step="0.1" placeholder="auto">
         </div>
+        <div class="field compact">
+          <label for="width">Output width</label>
+          <input id="width" name="width" type="number" min="1" value="720">
+        </div>
         <div class="field">
           <label for="outputStart">Output Start</label>
           <input id="outputStart" name="outputStart" type="text" placeholder="0:00 or 0f" inputmode="decimal" data-output-boundary>
@@ -452,7 +461,6 @@ function renderExperimentalEditor() {
       <input type="hidden" name="topY" value="0">
       <input type="hidden" name="bottomX" value="0">
       <input type="hidden" name="bottomY" value="0">
-      <input type="hidden" name="width" value="720">
       <input type="hidden" name="cropX" value="0">
       <input type="hidden" name="cropY" value="0">
       <input type="hidden" name="cropWidth" value="0">
@@ -690,17 +698,13 @@ function isFullExperimentalCrop(crop) {
     && crop.height === Math.round(editorState.naturalHeight || 0);
 }
 
-function setExperimentalCrop(crop, { updateOutputWidth = true } = {}) {
+function setExperimentalCrop(crop) {
   const next = clampExperimentalCrop(crop);
   const fields = cropFieldValues();
   if (fields.x) fields.x.value = String(next.x);
   if (fields.y) fields.y.value = String(next.y);
   if (fields.width) fields.width.value = String(next.width);
   if (fields.height) fields.height.value = String(next.height);
-  if (updateOutputWidth && next.width > 0) {
-    const widthField = experimentalField('width');
-    if (widthField) widthField.value = String(next.width);
-  }
 
   const display = toolForm.querySelector('#cropDisplay');
   if (display) {
@@ -726,7 +730,7 @@ function initializeExperimentalCrop() {
 
 function refreshExperimentalCrop() {
   if (!editorState.naturalWidth || !editorState.naturalHeight) return;
-  setExperimentalCrop(currentExperimentalCrop(), { updateOutputWidth: false });
+  setExperimentalCrop(currentExperimentalCrop());
 }
 
 function resetExperimentalCrop() {
@@ -897,6 +901,13 @@ function setExperimentalMediaStatus(prefix = '', state = 'ready') {
   setUploadStatus('input', [summary, prefix].filter(Boolean).join(' * '), state);
 }
 
+function experimentalPreviewStatus(input, seconds) {
+  const at = formatTimeLabel(seconds);
+  return looksLikeRemoteSource(input)
+    ? `Fetching online preview clip at ${at}...`
+    : `Rendering local preview frame at ${at}...`;
+}
+
 function syncExperimentalPreviewControls(seconds) {
   const slider = toolForm.querySelector('#previewTime');
   const label = toolForm.querySelector('#previewTimeLabel');
@@ -991,6 +1002,10 @@ function applyExperimentalFrameInput() {
 }
 
 async function loadExperimentalSourceInfo(input) {
+  const message = looksLikeRemoteSource(input)
+    ? 'Inspecting online media...'
+    : 'Inspecting local media...';
+  setUploadStatus('input', message, 'busy');
   const response = await fetch('/api/source-info', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1017,7 +1032,7 @@ async function loadExperimentalPreview() {
   }
   const time = experimentalPreviewTime();
 
-  setUploadStatus('input', 'Loading preview...', 'busy');
+  setUploadStatus('input', experimentalPreviewStatus(input, time), 'busy');
   const response = await fetch('/api/preview-frame', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

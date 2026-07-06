@@ -68,7 +68,11 @@ cleanup_test() {
     kill "$web_pid" 2>/dev/null || true
     wait "$web_pid" 2>/dev/null || true
   fi
-  rm -f "$REPO_ROOT/videos/mm-test-remote-blank.mp4" "$REPO_ROOT/videos/mm-test-local-mov.mp4"
+  rm -f \
+    "$REPO_ROOT/videos/mm-test-remote-blank.mp4" \
+    "$REPO_ROOT/videos/mm-test-local-mov.mp4" \
+    "$REPO_ROOT/videos/mm-test-crop-width.mp4" \
+    "$REPO_ROOT/videos/mm-test-cancel.mp4"
   rm -rf "$tmp_dir"
 }
 trap cleanup_test EXIT
@@ -133,15 +137,27 @@ if grep -q 'drawtext=' "$tmp_dir/blank-text.log"; then
 fi
 
 web_port="$(node -e "const net=require('net');const s=net.createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
-MM_WEB_PORT="$web_port" MM_TEST_YTDLP_LOG="$tmp_dir/web-yt-dlp.log" PATH="$stub_bin:$PATH" node web.js >"$tmp_dir/web.log" 2>&1 &
+MM_WEB_PORT="$web_port" MM_TEST_YTDLP_LOG="$tmp_dir/web-yt-dlp.log" MM_TEST_FFMPEG_LOG="$tmp_dir/web-ffmpeg.log" PATH="$stub_bin:$PATH" node web.js >"$tmp_dir/web.log" 2>&1 &
 web_pid=$!
-node - "$web_port" "$tmp_dir/input.mov" <<'NODE'
+node - "$web_port" "$tmp_dir" <<'NODE'
+const fs = require('fs');
+const path = require('path');
 const port = process.argv[2];
-const movInput = process.argv[3];
+const tmpDir = process.argv[3];
 const base = `http://127.0.0.1:${port}`;
+const ytDlpLog = path.join(tmpDir, 'web-yt-dlp.log');
+const movInput = path.join(tmpDir, 'input.mov');
 
 async function sleep(ms) {
   await new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitFor(fn, label) {
+  for (let i = 0; i < 50; i += 1) {
+    if (await fn()) return;
+    await sleep(100);
+  }
+  throw new Error(`timed out waiting for ${label}`);
 }
 
 async function waitForServer() {
@@ -177,19 +193,50 @@ async function getJson(path) {
   return data;
 }
 
+function countDownloadSections() {
+  if (!fs.existsSync(ytDlpLog)) return 0;
+  return (fs.readFileSync(ytDlpLog, 'utf8').match(/--download-sections/g) || []).length;
+}
+
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 (async () => {
   await waitForServer();
   const malformed = await fetch(`${base}/files/%E0%A4%A`);
   if (malformed.status !== 400) {
     throw new Error(`malformed file path returned ${malformed.status}, expected 400`);
   }
+  const arbitrary = await fetch(`${base}/files/README.md`);
+  if (arbitrary.status !== 404) {
+    throw new Error(`unregistered file path returned ${arbitrary.status}, expected 404`);
+  }
 
+  const previewDownloadCount = countDownloadSections();
   const preview = await postJson('/api/preview-frame', {
     input: 'https://youtu.be/e3zN3rn2g7M',
-    time: '0'
+    time: '0.2'
   });
   if (!preview.fileUrl || !preview.path.endsWith('.png')) {
     throw new Error('remote Experimental preview did not return a PNG file URL');
+  }
+  const previewFile = await fetch(`${base}${preview.fileUrl}`);
+  if (!previewFile.ok) {
+    throw new Error(`registered preview file returned ${previewFile.status}`);
+  }
+  await postJson('/api/preview-frame', {
+    input: 'https://youtu.be/e3zN3rn2g7M',
+    time: '0.8'
+  });
+  const previewDownloadsAfterCache = countDownloadSections() - previewDownloadCount;
+  if (previewDownloadsAfterCache !== 1) {
+    throw new Error(`expected cached preview window to use 1 yt-dlp download, saw ${previewDownloadsAfterCache}`);
   }
 
   const created = await postJson('/api/jobs', {
@@ -260,6 +307,73 @@ async function getJson(path) {
   }
   if (!job || job.status !== 'complete') {
     throw new Error(`remote blank-text Experimental job status: ${job && job.status}`);
+  }
+
+  const cropped = await postJson('/api/jobs', {
+    action: 'experimental-gif-editor',
+    fields: {
+      input: path.join(tmpDir, 'input.mp4'),
+      output: 'mm-test-crop-width',
+      format: 'mp4',
+      topText: '',
+      bottomText: '',
+      topX: '10',
+      topY: '20',
+      bottomX: '10',
+      bottomY: '20',
+      width: '320',
+      cropX: '10',
+      cropY: '20',
+      cropWidth: '100',
+      cropHeight: '80'
+    }
+  });
+  let croppedJob = null;
+  for (let i = 0; i < 50; i += 1) {
+    croppedJob = await getJson(`/api/jobs/${cropped.id}`);
+    if (croppedJob.status !== 'running') break;
+    await sleep(100);
+  }
+  if (!croppedJob || croppedJob.status !== 'complete') {
+    throw new Error(`crop/output-width Experimental job status: ${croppedJob && croppedJob.status}`);
+  }
+  const ffmpegLog = fs.readFileSync(path.join(tmpDir, 'web-ffmpeg.log'), 'utf8');
+  if (!ffmpegLog.includes('crop=100:80:10:20,scale=320:-2:flags=lanczos')) {
+    throw new Error('expected Experimental crop to preserve explicit output width 320');
+  }
+
+  const longFfmpeg = path.join(tmpDir, 'bin', 'ffmpeg');
+  const longPid = path.join(tmpDir, 'long-ffmpeg.pid');
+  fs.writeFileSync(longFfmpeg, `#!/usr/bin/env bash
+set -euo pipefail
+trap 'exit 143' TERM INT
+printf '%s\\n' "$$" >"${longPid}"
+sleep 60
+out="\${@: -1}"
+mkdir -p "$(dirname "$out")"
+printf 'encoded' >"$out"
+`);
+  fs.chmodSync(longFfmpeg, 0o755);
+
+  const cancellable = await postJson('/api/jobs', {
+    action: 'text-to-media',
+    fields: {
+      source: path.join(tmpDir, 'input.mp4'),
+      start: '0:00',
+      end: '',
+      format: 'mp4',
+      outputName: 'mm-test-cancel',
+      topText: 'TOP',
+      bottomText: ''
+    }
+  });
+  await waitFor(() => fs.existsSync(longPid), 'long ffmpeg pid');
+  const pid = Number(fs.readFileSync(longPid, 'utf8').trim());
+  await fetch(`${base}/api/jobs/${cancellable.id}/cancel`, { method: 'POST' });
+  await waitFor(() => !processAlive(pid), 'cancelled child process exit');
+  const cancelled = await getJson(`/api/jobs/${cancellable.id}`);
+  if (cancelled.status !== 'cancelled') {
+    throw new Error(`cancelled job status: ${cancelled.status}`);
   }
 })().catch(error => {
   console.error(error.message);

@@ -69,7 +69,8 @@ fields are validated as seconds, `MM:SS`, or `HH:MM:SS`, and Start must be
 before End when End is set.
 Finished jobs show both an Open link and a Download link. The Download link uses
 a browser attachment response so it should trigger the normal save/download
-flow with the generated filename.
+flow with the generated filename. `/files` and `/download` only serve paths the
+current server process has issued for a job output, upload, or preview asset.
 
 Output fields are sanitized and default to the project output directories:
 
@@ -97,7 +98,10 @@ such as `18f`, and Start must be before End. Text 1 and Text 2 can be left blank
 to render trim/crop/format changes without captions. It renders the result as
 GIF, MP4, or WebM and passes the crop rectangle, resulting x/y coordinates, font
 face, bold, italic, underline, strikethrough, and size settings to the local
-caption renderer. If you browse or enter a repo-local font path, the preview
+caption renderer. Output width is controlled separately from the crop rectangle.
+Remote preview clips are cached by source and second so nearby scrub requests
+reuse the same short download, and the input status distinguishes online preview
+clip fetching from local frame rendering. If you browse a font file, the preview
 text loads that font file in the browser before rendering.
 
 ```bash
@@ -220,6 +224,8 @@ All scripts support `-h` / `--help`.
 - `MM_OUTPUT_FPS=30` — optional forced output frame rate for `mememaker`
 - `MM_YTDLP_FORCE_IPV4=0` — allow yt-dlp to use IPv6 too; by default meme-maker passes `--force-ipv4` to avoid hangs on flaky IPv6 routes
 - `MM_YTDLP_SOCKET_TIMEOUT=15` — socket timeout, in seconds, passed to yt-dlp; set `0` to use yt-dlp's default
+- `MM_WEB_PREVIEW_TIMEOUT_MS=45000` — timeout for Experimental remote preview yt-dlp/ffmpeg helper processes
+- `MM_WEB_PREVIEW_CACHE_ENTRIES=24` — number of remote preview clip windows cached by the local web server; set `0` to disable
 - `MM_WEBM_CRF=34` — WebM quality/speed target; lower is higher quality and slower
 - `MM_WEBM_CPU_USED=5` — WebM VP9 speed setting; higher is faster with lower compression quality
 - `MM_WEBM_TILE_COLUMNS=2` — WebM VP9 tiling for parallel encoding
