@@ -21,8 +21,8 @@ Installs/checks the Windows-side tools needed by meme-maker and creates .cmd
 shims in $BinDir for the Bash scripts.
 
 Notes:
-  - The media scripts are Bash scripts. Install Git for Windows or WSL so bash
-    is available on PATH.
+  - The media scripts are Bash scripts. The installer detects bash on PATH and
+    in the standard Git for Windows locations.
   - Dependencies are installed with winget when it is available.
 "@
 }
@@ -30,6 +30,28 @@ Notes:
 function Has-Command([string]$Name) {
   return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
+
+function Resolve-BashPath {
+  $command = Get-Command "bash" -ErrorAction SilentlyContinue
+  if ($command) {
+    return $command.Source
+  }
+
+  foreach ($candidate in @(
+    (Join-Path $env:ProgramFiles "Git\bin\bash.exe"),
+    (Join-Path $env:ProgramFiles "Git\usr\bin\bash.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Git\bin\bash.exe"),
+    (Join-Path $env:LOCALAPPDATA "Programs\Git\bin\bash.exe")
+  )) {
+    if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+      return $candidate
+    }
+  }
+
+  return $null
+}
+
+$BashPath = Resolve-BashPath
 
 function Warn([string]$Message) {
   Write-Warning $Message
@@ -52,7 +74,14 @@ function Run-Doctor {
   Write-Host "Repo: $RepoRoot"
   Write-Host ""
 
-  foreach ($cmd in @("bash", "yt-dlp", "ffmpeg", "ffprobe", "node", "npm")) {
+  if ($BashPath) {
+    Write-Host "OK bash ($BashPath)"
+  } else {
+    Warn "bash is missing"
+    $issues += 1
+  }
+
+  foreach ($cmd in @("yt-dlp", "ffmpeg", "ffprobe", "node", "npm")) {
     if (Has-Command $cmd) {
       Write-Host "OK $cmd"
     } else {
@@ -79,10 +108,13 @@ function Run-Doctor {
 }
 
 function New-Shim([string]$Name, [string]$Script) {
+  if (-not $BashPath) {
+    throw "bash was not found. Install Git for Windows or make bash available on PATH."
+  }
   New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
   $target = Join-Path $RepoRoot $Script
   $shim = Join-Path $BinDir "$Name.cmd"
-  $content = "@echo off`r`nbash `"$target`" %*`r`n"
+  $content = "@echo off`r`n`"$BashPath`" `"$target`" %*`r`n"
   Set-Content -Path $shim -Value $content -Encoding ASCII
   Write-Host "linked $Name.cmd -> $target"
 }

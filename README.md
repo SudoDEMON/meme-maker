@@ -32,6 +32,11 @@ OS-specific installer entrypoints are available too:
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
+On Windows, the installer uses Git Bash from `PATH` or its standard Git for
+Windows install locations. Its generated `.cmd` shims call the detected Bash
+executable directly, so Git's `bin` directory does not need to be added to the
+machine-wide `PATH`.
+
 The installer will:
 - Install `yt-dlp`, `ffmpeg`, fonts, and Node.js (where possible)
 - Symlink the tools into `~/.local/bin`

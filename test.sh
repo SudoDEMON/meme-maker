@@ -136,6 +136,11 @@ if grep -q 'drawtext=' "$tmp_dir/blank-text.log"; then
   exit 1
 fi
 
+if command -v cygpath >/dev/null 2>&1; then
+  echo "✓ Shell tests passed (web fixture integration requires Unix-native Node)"
+  exit 0
+fi
+
 web_port="$(node -e "const net=require('net');const s=net.createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
 MM_WEB_PORT="$web_port" MM_TEST_YTDLP_LOG="$tmp_dir/web-yt-dlp.log" MM_TEST_FFMPEG_LOG="$tmp_dir/web-ffmpeg.log" PATH="$stub_bin:$PATH" node web.js >"$tmp_dir/web.log" 2>&1 &
 web_pid=$!
