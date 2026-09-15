@@ -112,6 +112,8 @@ test('two-section browser workflows', {skip:process.platform === 'win32' ? 'Inte
     await page.waitForFunction(()=>document.querySelector('#resultTitle').textContent==='Ready to save' && document.querySelector('#jobMessage').textContent==='browser-audio.mp3');
     assert.ok(await page.$('#resultPreview audio'));
     await page.click('[data-operation="audio"]');
+    await page.click('.asset-card:first-child .asset-select strong');
+    assert.equal(await page.$eval('.source-summary strong',el=>el.textContent),'input.mp4');
     const audioId=await page.$eval('#mediaForm [name="audioId"]',el=>[...el.options].find(option=>option.textContent==='browser-audio.mp3').value);
     await page.select('#mediaForm [name="audioId"]',audioId);
     await fill(page,'#mediaForm [name="output"]','browser-new-audio');
@@ -180,4 +182,46 @@ test('two-section browser workflows', {skip:process.platform === 'win32' ? 'Inte
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     assert.deepEqual(errors,[]);
   });
+});
+
+test('media selection survives clicks, keyboard input, and refresh', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
+  const f=await fixture();
+  t.after(()=>f.close());
+  const browser=await puppeteer.launch({headless:true,args:['--no-sandbox']});
+  t.after(()=>browser.close());
+  const page=await browser.newPage();
+  const second=path.join(f.root,'second.mp4');
+  fs.copyFileSync(f.input,second);
+  await page.goto(f.url);
+  await page.waitForSelector('#mediaForm');
+  for(const source of [f.input,second]) {
+    await fill(page,'#sourceInput',source);
+    await page.click('#addSourceForm button');
+  }
+  await page.click('[data-operation="audio"]');
+  const selected=()=>page.$$eval('.asset-select input:checked',els=>els.map(el=>el.nextElementSibling.querySelector('strong').textContent));
+  assert.deepEqual(await selected(),['second.mp4']);
+
+  await page.click('.asset-card:first-child input');
+  assert.deepEqual(await selected(),['input.mp4']);
+  assert.equal(await page.$eval('.source-summary strong',el=>el.textContent),'input.mp4');
+  await page.click('.asset-card:last-child .asset-select strong');
+  assert.deepEqual(await selected(),['second.mp4']);
+  assert.equal(await page.$eval('.source-summary strong',el=>el.textContent),'second.mp4');
+
+  await page.focus('.asset-card:first-child input');
+  await page.keyboard.press('Space');
+  assert.deepEqual(await selected(),['input.mp4']);
+  await page.reload();
+  await page.waitForSelector('#mediaForm');
+  assert.deepEqual(await selected(),['input.mp4']);
+  assert.equal(await page.$eval('.source-summary strong',el=>el.textContent),'input.mp4');
+
+  await page.click('[data-operation="combine"]');
+  await page.click('.asset-card:last-child .asset-select strong');
+  assert.deepEqual(await selected(),['input.mp4','second.mp4']);
+  assert.deepEqual(await page.$$eval('.source-summary li',els=>els.map(el=>el.textContent)),['input.mp4','second.mp4']);
+  await page.click('.asset-card:first-child input');
+  assert.deepEqual(await selected(),['second.mp4']);
+  assert.deepEqual(await page.$$eval('.source-summary li',els=>els.map(el=>el.textContent)),['second.mp4']);
 });
