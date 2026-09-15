@@ -90,7 +90,7 @@ function Run-Doctor {
     }
   }
 
-  foreach ($cmd in @("mememaker.cmd", "meme-convert.cmd", "audio_video.cmd", "audio-video.cmd", "build.cmd")) {
+  foreach ($cmd in @("mememaker.cmd", "meme-convert.cmd", "audio_video.cmd", "audio-video.cmd", "combine_videos.cmd", "combine-videos.cmd", "build.cmd")) {
     $path = Join-Path $BinDir $cmd
     if (Test-Path $path) {
       Write-Host "OK $path"
@@ -153,6 +153,8 @@ if (-not $DepsOnly) {
   New-Shim "meme-convert" "convert.sh"
   New-Shim "audio_video" "audio_video.sh"
   New-Shim "audio-video" "audio_video.sh"
+  New-Shim "combine_videos" "combine_videos.sh"
+  New-Shim "combine-videos" "combine_videos.sh"
   New-Shim "build" "build.sh"
 }
 

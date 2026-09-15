@@ -219,6 +219,7 @@ link_scripts() {
     "mememaker.sh"
     "convert.sh"
     "audio_video.sh"
+    "combine_videos.sh"
     "build.sh"
     "lib.sh"
   )
@@ -238,6 +239,9 @@ link_scripts() {
       ln -sf "$src" "$BIN_DIR/$script"         # keep .sh version too
       if [[ "$script" == "audio_video.sh" ]]; then
         ln -sf "$src" "$BIN_DIR/audio-video"
+      fi
+      if [[ "$script" == "combine_videos.sh" ]]; then
+        ln -sf "$src" "$BIN_DIR/combine-videos"
       fi
       echo "  linked → ${script%.sh}"
     else
@@ -469,7 +473,7 @@ NODE
   # --- Linked commands in PATH ---
   echo
   echo "${BOLD}Installed commands (in $BIN_DIR):${RESET}"
-  local cmds=(mememaker meme-convert audio_video audio-video build)
+  local cmds=(mememaker meme-convert audio_video audio-video combine_videos combine-videos build)
   local missing_links=0
   for c in "${cmds[@]}"; do
     if [[ -L "$BIN_DIR/$c" || -f "$BIN_DIR/$c" ]]; then
@@ -539,12 +543,13 @@ echo
 cat <<EOF
 You can now run the tools directly:
 
-  mememaker   meme-convert   audio-video   build
+  mememaker   meme-convert   audio-video   combine-videos   build
 
 Try:
   mememaker --help
   meme-convert --help
   audio-video --help
+  combine-videos --help
 
 To update later:
   cd $REPO_ROOT

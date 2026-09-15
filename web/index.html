@@ -3,64 +3,54 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
   <title>Meme Maker</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="app">
-    <header class="site-header" aria-label="Primary">
-      <div class="brand" aria-label="MM Meme Maker">
-        <span class="brand-mark">MM</span>
-        <span>Meme Maker</span>
-      </div>
-      <nav class="tool-tabs" id="toolTabs" aria-label="Workflows"></nav>
+  <header class="site-header">
+    <a class="brand" href="#media"><span class="brand-mark">MM</span>Meme Maker</a>
+    <nav aria-label="Sections">
+      <button type="button" data-section="media" aria-current="page">Media Tools</button>
+      <button type="button" data-section="editor">Meme Editor</button>
+    </nav>
+    <span class="server-status" id="serverStatus">Connecting…</span>
+  </header>
+  <main class="workspace">
+    <header class="workspace-head">
+      <div><p class="eyebrow" id="sectionEyebrow">YOUR MEDIA, READY TO GO</p><h1 id="sectionTitle">Media Tools</h1><p id="sectionDescription">Download, convert, or combine. Start with your files or a link.</p></div>
     </header>
-
-    <main class="workspace">
-      <header class="workspace-head">
-        <div>
-          <p class="page-title" id="toolKicker">Download or Convert</p>
-        </div>
-        <div class="server-status">
-          <span class="status-dot" id="statusDot"></span>
-          <span id="serverStatus">Checking server</span>
-        </div>
-      </header>
-
-      <section class="form-panel">
-        <div class="panel-head">
-          <div>
-            <h2>Settings</h2>
+    <div class="workspace-grid">
+      <aside class="panel library" aria-labelledby="libraryTitle">
+        <div class="panel-head"><h2 id="libraryTitle">Your media</h2><span id="assetCount" class="count">0</span></div>
+        <form id="addSourceForm" class="source-entry">
+          <label for="sourceInput">Link or local path</label>
+          <div class="input-action"><input id="sourceInput" placeholder="Paste a URL or file path" autocomplete="off"><button type="submit" class="secondary-button">Add</button></div>
+        </form>
+        <label class="drop-zone" id="dropZone"><span class="upload-icon" aria-hidden="true">＋</span><strong>Choose files</strong><span>or drop them here</span><input id="mediaUpload" type="file" multiple accept="video/*,audio/*,image/gif,.mov,.webm,.mp4,.html,.htm"></label>
+        <p id="libraryStatus" class="status-message" role="status"></p>
+        <ul id="assetList" class="asset-list" aria-label="Added media"></ul>
+        <p id="libraryEmpty" class="empty-hint">Files stay available in both sections.</p>
+      </aside>
+      <div class="main-column">
+        <section id="mediaPanel" class="panel" aria-label="Media tools"></section>
+        <section id="editorPanel" class="panel editor-panel" aria-label="Meme editor" hidden></section>
+        <section class="panel result-panel" aria-labelledby="resultTitle">
+          <div class="panel-head"><div><p class="eyebrow">OUTPUT</p><h2 id="resultTitle">Ready when you are</h2></div><button type="button" id="cancelButton" class="secondary-button" hidden>Cancel</button></div>
+          <p id="jobMessage" role="status">Your finished media will appear here.</p>
+          <progress id="jobProgress" aria-label="Processing media" hidden></progress>
+          <div id="resultPreview" class="result-preview"></div>
+          <div id="outputActions" class="button-row" hidden>
+            <a id="downloadLink" class="primary-button">Download</a>
+            <a id="outputLink" class="secondary-button" target="_blank" rel="noopener">Open file</a>
+            <button id="editOutputButton" class="secondary-button" type="button">Open in Meme Editor</button>
           </div>
-          <div class="head-actions">
-            <button class="secondary-button reset-button" type="button" id="resetButton">Reset</button>
-          </div>
-        </div>
-        <form id="toolForm" autocomplete="off"></form>
-      </section>
-
-      <section class="job-panel" aria-live="polite">
-        <div class="job-head">
-          <div>
-            <h2>Terminal Window <span id="jobStatus">Ready</span></h2>
-          </div>
-          <div class="terminal-actions">
-            <button class="icon-button" type="button" id="cancelButton" title="Cancel job" disabled>x</button>
-            <button class="primary-button" type="submit" form="toolForm" id="runButton">
-              <span aria-hidden="true">></span>
-              <span>Run</span>
-            </button>
-            <div class="output-actions">
-              <a id="outputLink" class="output-link" href="#" target="_blank" rel="noopener" hidden>Open output</a>
-              <a id="downloadLink" class="output-link" href="#" hidden>Download output</a>
-            </div>
-          </div>
-        </div>
-        <pre id="jobLog" class="job-log"></pre>
-      </section>
-    </main>
-  </div>
-
-  <script src="/app.js" defer></script>
+          <details id="jobDetails"><summary>Processing log</summary><pre id="jobLog" class="job-log"></pre></details>
+        </section>
+      </div>
+    </div>
+  </main>
+  <footer>Made for the clip you had in mind.</footer>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

@@ -9,6 +9,7 @@ scripts=(
   "lib.sh"
   "convert.sh"
   "audio_video.sh"
+  "combine_videos.sh"
   "build.sh"
   "install.sh"
   "install-linux.sh"
@@ -23,12 +24,14 @@ node --check web/app.js
 ./mememaker.sh --help >/dev/null
 ./convert.sh --help >/dev/null
 ./audio_video.sh --help >/dev/null
+./combine_videos.sh --help >/dev/null
 ./build.sh --help >/dev/null
 ./install.sh --help >/dev/null
 ./install-linux.sh --help >/dev/null
 ./install-macos.sh --help >/dev/null
 ./convert.sh --help | grep -q 'gif|mp3|mp4|webm'
 ./audio_video.sh --help | grep -q 'source-file-or-url-or-youtube-id'
+./combine_videos.sh --help | grep -q 'input1.*input2'
 ./build.sh --help | grep -q 'webm'
 ./mememaker.sh --help | grep -q '\[end\]'
 ./mememaker.sh --help | grep -q -- '--top-x'
@@ -72,10 +75,44 @@ cleanup_test() {
     "$REPO_ROOT/videos/mm-test-remote-blank.mp4" \
     "$REPO_ROOT/videos/mm-test-local-mov.mp4" \
     "$REPO_ROOT/videos/mm-test-crop-width.mp4" \
+    "$REPO_ROOT/videos/mm-test-combined.mp4" \
     "$REPO_ROOT/videos/mm-test-cancel.mp4"
   rm -rf "$tmp_dir"
 }
 trap cleanup_test EXIT
+
+ffmpeg -v error -y \
+  -f lavfi -i 'color=c=black:s=64x64:r=10:d=0.3' \
+  -f lavfi -i 'anullsrc=r=48000:cl=stereo' \
+  -t 0.3 -map 0:v:0 -map 1:a:0 \
+  -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac \
+  "$tmp_dir/combine-1.mp4"
+ffmpeg -v error -y \
+  -f lavfi -i 'color=c=white:s=64x64:r=10:d=0.3' \
+  -f lavfi -i 'anullsrc=r=48000:cl=stereo' \
+  -t 0.3 -map 0:v:0 -map 1:a:0 \
+  -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac \
+  -video_track_timescale 90000 \
+  "$tmp_dir/combine-2.mp4"
+ffmpeg -v error -y \
+  -f lavfi -i 'color=c=blue:s=80x64:r=12:d=0.3' \
+  -t 0.3 -map 0:v:0 \
+  -c:v libx264 -preset ultrafast -pix_fmt yuv420p -an \
+  "$tmp_dir/combine-mismatch.mp4"
+./combine_videos.sh \
+  "$tmp_dir/combine-1.mp4" "$tmp_dir/combine-2.mp4" "$tmp_dir/combined.mp4" \
+  >"$tmp_dir/combine.log" 2>&1
+grep -q 'lossless stream copy' "$tmp_dir/combine.log"
+grep -q 'Normalizing MP4 track time base' "$tmp_dir/combine.log"
+[[ "$(ffprobe -v error -show_entries stream=codec_type -of csv=p=0 "$tmp_dir/combined.mp4" | sort | tr '\n' ' ')" == "audio video " ]]
+combined_duration="$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$tmp_dir/combined.mp4")"
+awk -v duration="$combined_duration" 'BEGIN { exit !(duration >= 0.5 && duration < 1) }'
+./combine_videos.sh \
+  "$tmp_dir/combine-1.mp4" "$tmp_dir/combine-mismatch.mp4" "$tmp_dir/combined-normalized.mp4" \
+  >"$tmp_dir/combine-normalized.log" 2>&1
+grep -q 'normalized re-encode' "$tmp_dir/combine-normalized.log"
+[[ "$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "$tmp_dir/combined-normalized.mp4")" == "64,64" ]]
+[[ "$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_type -of csv=p=0 "$tmp_dir/combined-normalized.mp4")" == "audio" ]]
 
 stub_bin="$tmp_dir/bin"
 mkdir -p "$stub_bin"
@@ -125,8 +162,9 @@ if grep -q -- '--download-sections' "$tmp_dir/yt-dlp.log"; then
   exit 1
 fi
 
-printf 'media' >"$tmp_dir/input.mp4"
-printf 'media' >"$tmp_dir/input.mov"
+ffmpeg -v error -f lavfi -i 'color=c=black:s=320x180:r=10:d=2' \
+  -c:v libx264 -pix_fmt yuv420p "$tmp_dir/input.mp4"
+cp "$tmp_dir/input.mp4" "$tmp_dir/input.mov"
 MM_TEST_FFMPEG_LOG="$tmp_dir/ffmpeg.log" PATH="$stub_bin:$PATH" ./mememaker.sh --caption-local --crop 10 20 30 40 --width 30 "$tmp_dir/input.mp4" "$tmp_dir/cropped.mp4" "TOP" "" >/dev/null
 grep -q 'crop=30:40:10:20,scale=30:-2:flags=lanczos' "$tmp_dir/ffmpeg.log"
 
@@ -152,6 +190,8 @@ const tmpDir = process.argv[3];
 const base = `http://127.0.0.1:${port}`;
 const ytDlpLog = path.join(tmpDir, 'web-yt-dlp.log');
 const movInput = path.join(tmpDir, 'input.mov');
+const combineFirst = path.join(tmpDir, 'combine-1.mp4');
+const combineSecond = path.join(tmpDir, 'combine-2.mp4');
 
 async function sleep(ms) {
   await new Promise(resolve => setTimeout(resolve, ms));
@@ -304,6 +344,20 @@ function processAlive(pid) {
 
   await waitForCompleteJob(movCreated.id, 'local MOV Experimental');
 
+  const combined = await postJson('/api/jobs', {
+    action: 'combine-videos',
+    fields: {
+      first: combineFirst,
+      second: combineSecond,
+      format: 'mp4',
+      output: 'mm-test-combined'
+    }
+  });
+  if (combined.outputPath !== 'videos/mm-test-combined.mp4') {
+    throw new Error(`unexpected combined output path: ${combined.outputPath}`);
+  }
+  await waitForCompleteJob(combined.id, 'Combine Videos');
+
   let job = null;
   for (let i = 0; i < 50; i += 1) {
     job = await getJson(`/api/jobs/${created.id}`);
@@ -376,6 +430,10 @@ printf 'encoded' >"$out"
   const pid = Number(fs.readFileSync(longPid, 'utf8').trim());
   await fetch(`${base}/api/jobs/${cancellable.id}/cancel`, { method: 'POST' });
   await waitFor(() => !processAlive(pid), 'cancelled child process exit');
+  await waitFor(async () => {
+    const current = await getJson(`/api/jobs/${cancellable.id}`);
+    return current.status === 'cancelled';
+  }, 'cancelled job status');
   const cancelled = await getJson(`/api/jobs/${cancellable.id}`);
   if (cancelled.status !== 'cancelled') {
     throw new Error(`cancelled job status: ${cancelled.status}`);

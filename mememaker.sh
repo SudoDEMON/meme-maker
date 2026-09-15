@@ -83,6 +83,7 @@ Options:
   --bottom-bold
   --bottom-italic
   --width <px>          Output width. Default: 720
+  --source-coordinates  Draw captions before crop/resize (visual editor).
   --crop <x> <y> <w> <h>
                          Crop local/cleaned media before scaling and captions.
   --start <time>        Local caption start time. Default: 0:00
@@ -328,6 +329,14 @@ build_base_video_filter() {
   fi
 }
 
+compose_render_filter() {
+  if (( SOURCE_COORDINATES )); then
+    append_filter "$2" "$1"
+  else
+    append_filter "$1" "$2"
+  fi
+}
+
 encode_media() {
   local input=$1
   local out=$2
@@ -355,7 +364,7 @@ encode_media() {
     gif)
       palette="$(make_temp_file --ext png)"
       base_filter="$(build_base_video_filter)"
-      filter="$(append_filter "fps=$gif_fps,$base_filter" "$caption_filter")"
+      filter="$(compose_render_filter "fps=$gif_fps,$base_filter" "$caption_filter")"
 
       info "Generating palette..."
       ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter,palettegen" -frames:v 1 -update 1 "$palette"
@@ -368,7 +377,7 @@ encode_media() {
     mp4)
       video_filter="$(build_base_video_filter)"
       [[ -n "$OUTPUT_FPS" ]] && video_filter="fps=$OUTPUT_FPS,$video_filter"
-      filter="$(append_filter "$video_filter" "$caption_filter")"
+      filter="$(compose_render_filter "$video_filter" "$caption_filter")"
       info "Creating MP4..."
       ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter" \
              -c:v libx264 -crf 23 -preset slow -movflags +faststart \
@@ -377,7 +386,7 @@ encode_media() {
     webm)
       video_filter="$(build_base_video_filter)"
       [[ -n "$OUTPUT_FPS" ]] && video_filter="fps=$OUTPUT_FPS,$video_filter"
-      filter="$(append_filter "$video_filter" "$caption_filter")"
+      filter="$(compose_render_filter "$video_filter" "$caption_filter")"
       info "Creating WebM..."
       ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter" \
              -c:v libvpx-vp9 -crf "${MM_WEBM_CRF:-34}" -b:v 0 \
@@ -700,6 +709,7 @@ EOF
   done
 }
 
+SOURCE_COORDINATES=0
 POSITIONAL=()
 while (($#)); do
   case "$1" in
@@ -713,6 +723,10 @@ while (($#)); do
       ;;
     --caption-local)
       CAPTION_LOCAL=1
+      shift
+      ;;
+    --source-coordinates)
+      SOURCE_COORDINATES=1
       shift
       ;;
     --top-y)

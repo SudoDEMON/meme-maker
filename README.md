@@ -13,6 +13,7 @@ Now reasonably robust, portable, and easy to install on new machines, especially
 | `convert.sh`    | Download or convert media formats    | Local media or remote source → GIF/MP3/MP4/WebM |
 | `mememaker.sh`  | Interactive meme and text workflow   | Menu + local/remote caption renderer |
 | `audio_video.sh` | Add audio to video/media            | Local/remote video + local audio → MP4/WebM |
+| `combine_videos.sh` | Append local videos              | Fast lossless concat when compatible; normalized MP4/WebM fallback |
 | `build.sh`      | HTML → video/GIF/PNG/WebM using puppeteer | Advanced: capture browser animations |
 | `lib.sh`        | Shared utilities                     | Used by the main scripts |
 
@@ -42,7 +43,8 @@ The installer will:
 - Symlink the tools into `~/.local/bin`
 - Optionally set up `npm` deps for `build.sh`
 
-After that you can just run `mememaker`, `meme-convert`, `audio-video`, etc. from anywhere.
+After that you can just run `mememaker`, `meme-convert`, `audio-video`,
+`combine-videos`, etc. from anywhere.
 `convert.sh` is linked as `meme-convert` to avoid shadowing ImageMagick's
 common `convert` command.
 
@@ -54,68 +56,80 @@ npm run web
 
 Open `http://127.0.0.1:3001`.
 
-The web UI runs the same local scripts as the CLI and streams `yt-dlp` / `ffmpeg`
-logs in the browser. By default it binds to `127.0.0.1` for local-only use.
-The main web tabs are:
+The app has two sections, backed by the same local CLI scripts:
 
-- **Download or Convert**: local media or yt-dlp-supported URL → GIF/MP3/MP4/WebM
-- **Text to Media**: local media or yt-dlp-supported URL → captioned GIF/MP4/WebM
-- **Audio to Video**: local media or yt-dlp-supported URL + local audio → MP4/WebM
-- **Build HTML Animation**
-- **Experimental**
+- **Media Tools**: download/convert media, combine clips in playback order,
+  extract MP3 audio, or replace a video's soundtrack. Add files or paste a URL
+  once into **Your media**, then select the operation. HTML animation rendering
+  is available under **Advanced tools**.
+- **Meme Editor**: a visual preview with draggable captions and crop handles,
+  classic top/bottom caption layout, trim controls, and GIF/MP4/WebM export.
+  Font overrides, custom font files, frame numbers, and output FPS are under
+  **Advanced settings**. Captions can be blank for trim/crop-only output.
 
-You can paste a YouTube ID, YouTube URL, or another media URL supported by the
-installed `yt-dlp`. YouTube URLs are normalized to the 11-character ID. Source
-fields can also Browse for local files. When a source is entered, the server
-probes it with `ffprobe` for local files or `yt-dlp --dump-single-json` for
-remote URLs to show support/duration, fill the End field with the detected
-duration, and prefill the output name from the media ID/name. Start and End
-fields are validated as seconds, `MM:SS`, or `HH:MM:SS`, and Start must be
-before End when End is set.
-Finished jobs show both an Open link and a Download link. The Download link uses
-a browser attachment response so it should trigger the normal save/download
-flow with the generated filename. `/files` and `/download` only serve paths the
-current server process has issued for a job output, upload, or preview asset.
+Files are shared between sections. Combine accepts 2–30 local MOV/MP4/WebM
+clips; use the arrows in the library to set their order. Convert downloads
+remote sources automatically. YouTube IDs/URLs and other URLs supported by the
+installed `yt-dlp` are accepted. To combine a remote clip, convert/download it
+first, then select the result from your library.
 
-Output fields are sanitized and default to the project output directories:
+Drafts and the shared file list survive section switches and page refreshes
+within the current browser tab. Source inspection shows duration and format
+without overwriting a trim you entered. A completed output appears with a
+playable preview, Download, and **Open in Meme Editor** for compatible media.
+Processing logs are expandable. The browser reconnects to an active job after
+a connection interruption or refresh, and keeps Cancel available while checking
+its status. Jobs themselves are in memory and do not survive server restarts.
 
-- Video/WebM: `videos/<name>.mp4` or `videos/<name>.webm`
-- GIF: `gifs/<name>.gif`
-- Audio: `Audio/<name>.mp3`
+The editor supports local GIF/MOV/MP4/WebM and remote video. Local files served
+by this app play and seek directly when the browser supports their codec;
+external filesystem paths and remote sources use extracted frame previews.
+Output Start/End accept seconds, `MM:SS`, `HH:MM:SS`, or frame values such as
+`18f`. End is optional. Arrow keys move a focused caption or crop handle;
+hold Shift for larger steps.
 
-For example, typing `test-clips` in an MP4 output field produces
-`videos/test-clips.mp4`; selecting GIF, MP3, or WebM sends it to the matching
-default folder/extension. Relative subdirectories are allowed, but absolute
-paths and `..` segments are rejected.
+The editor stores positions and font sizes in source pixels. Its renderer draws
+captions before crop/resize, so resizing moves and scales the image and text
+together. It loads the server's resolved font faces for the browser preview,
+with a browser-font fallback when that face cannot be loaded. Remote metadata
+is cached for five minutes, including in-flight requests. Obsolete preview
+requests are cancelled, and remote preview windows are cached by source/second.
 
-Local file pickers upload the selected file into `.web-uploads/` and then use
-that uploaded local path for GIF/video/audio/font/HTML inputs. This keeps the
-browser security model intact while still giving a normal file chooser.
+Output names default to the project directories: `videos/` for MP4/WebM,
+`gifs/` for GIF, `Audio/` for MP3, and `frames/` for PNG. Relative subdirectories
+are allowed; absolute paths and `..` segments are rejected. Use a new output
+name to keep multiple versions; rendering to an existing name replaces it.
 
-The **Experimental** tab includes a visual media text editor. Input can be a
-local GIF/MOV/MP4/WebM, a YouTube URL/ID, or another URL supported by the installed
-`yt-dlp`. Output is an output name plus a GIF/MP4/WebM dropdown. It loads a
-preview frame, shows resolution/length/FPS/frame count, lets you scrub with the
-slider or editable time/frame fields, drag two text fields into place, drag the
-preview crop edges/corners, set optional output FPS, and trim output with Output
-Start/End. Output Start/End accept time values such as `0:01.5` or frame values
-such as `18f`, and Start must be before End. Text 1 and Text 2 can be left blank
-to render trim/crop/format changes without captions. It renders the result as
-GIF, MP4, or WebM and passes the crop rectangle, resulting x/y coordinates, font
-face, bold, italic, underline, strikethrough, and size settings to the local
-caption renderer. Output width is controlled separately from the crop rectangle.
-Remote preview clips are cached by source and second so nearby scrub requests
-reuse the same short download, and the input status distinguishes online preview
-clip fetching from local frame rendering. If you browse a font file, the preview
-text loads that font file in the browser before rendering.
+File pickers upload once into the ignored `.web-uploads/` directory. The default
+upload limit is 2 GiB (`MM_WEB_MAX_UPLOAD_BYTES`). These uploads and generated
+previews are local scratch files; removing a library entry only removes its
+browser reference, not the file on disk. `/files` and `/download` serve only
+paths registered by the current server process. Metadata inspection re-registers
+local media when restoring the library after a restart.
 
 ```bash
 MM_WEB_PORT=3001 npm run web
 ```
 
-This local runner can read/write local paths and run media tools. If this is
-later hosted from another site, keep the frontend but replace the local runner
-with an authenticated server-side job queue or another remote-safe backend.
+The server binds to `127.0.0.1` by default. This local runner can read/write local
+paths and run media tools; a public deployment needs a separate authenticated
+backend with restricted paths and a job queue.
+
+### Validation
+
+```bash
+npm test          # CLI smoke tests + real media/server regression tests
+npm run test:web  # Headless Chromium workflow tests (requires npm dependencies)
+npm run check     # Both suites
+npm run doctor    # Installed tools and command links
+```
+
+The integration fixtures run in temporary directories with synthetic video and
+stubbed remote downloads. They cover caption resize/crop output, asynchronous
+metadata, playback ranges, preview cancellation, draft persistence, clip order,
+output handoff, stale preview responses, connection recovery, and mobile width.
+Media integration fixtures currently require Unix-native Node; the existing
+Windows shell checks remain available through `npm test`.
 
 ### Manual / no-install route
 
@@ -203,6 +217,9 @@ brew install yt-dlp ffmpeg node
 # Add local audio to a remote or local video source
 ./audio_video.sh O0Dgtar0zB4 0:00 0:20 Audio/sting.mp3 videos/clip-with-audio.mp4
 
+# Append local clips in order (two or more inputs are supported)
+./combine_videos.sh videos/part-1.mp4 videos/part-2.mp4 videos/combined.mp4
+
 # Capture HTML to WebM
 ./build.sh index.html out.webm 10 music.mp3
 ```
@@ -210,10 +227,11 @@ brew install yt-dlp ffmpeg node
 - `mememaker` will create `gifs/` or `videos/` as needed and name the file after the media source (or your custom stem) + the right extension.
 - `convert.sh` is the general download/convert entrypoint. It requires an explicit output and accepts `gif`, `mp3`, `mp4`, or `webm`.
 - `audio_video.sh` is the general add-audio entrypoint for local/remote media plus a local audio file.
+- `combine_videos.sh` appends two or more local clips. Matching streams use a fast lossless copy; differing resolution, frame rate, codec, or audio layout triggers a normalized re-encode.
 - Caption text can be blank: use `"" ""` or `--no-text`. In the interactive menu, leave text prompts blank for no text.
 - End time can be blank/omitted to use everything from the start time through the end of the video. Internally this uses yt-dlp's `inf` section end when a section is still needed.
 - `--top-y`, `--bottom-y`, `--font-size`, `--width`, and `--fps` control caption placement and output sizing.
-- `--top-x`, `--bottom-x`, `--bottom-from-top`, `--crop`, `--font-family`, `--bold`, `--italic`, `--underline`, and `--strikethrough` are available for the experimental visual editor and advanced caption placement.
+- `--top-x`, `--bottom-x`, `--bottom-from-top`, `--crop`, `--font-family`, `--bold`, `--italic`, `--underline`, and `--strikethrough` are available for the visual editor and advanced caption placement.
 - `--top-font-family`, `--top-font-size`, `--top-bold`, `--top-italic`, `--bottom-font-family`, `--bottom-font-size`, `--bottom-bold`, and `--bottom-italic` control the two caption lines independently.
 - In `--caption-local` mode, `--start` and `--end` trim the local source before captioning. Seconds can include decimals, such as `0.5`.
 
@@ -229,8 +247,10 @@ All scripts support `-h` / `--help`.
 - `MM_OUTPUT_FPS=30` — optional forced output frame rate for `mememaker`
 - `MM_YTDLP_FORCE_IPV4=0` — allow yt-dlp to use IPv6 too; by default meme-maker passes `--force-ipv4` to avoid hangs on flaky IPv6 routes
 - `MM_YTDLP_SOCKET_TIMEOUT=15` — socket timeout, in seconds, passed to yt-dlp; set `0` to use yt-dlp's default
-- `MM_WEB_PREVIEW_TIMEOUT_MS=45000` — timeout for Experimental remote preview yt-dlp/ffmpeg helper processes
+- `MM_WEB_PREVIEW_TIMEOUT_MS=45000` — timeout for remote preview yt-dlp/ffmpeg helper processes
 - `MM_WEB_PREVIEW_CACHE_ENTRIES=24` — number of remote preview clip windows cached by the local web server; set `0` to disable
+- `MM_WEB_MAX_UPLOAD_BYTES=2147483648` — maximum local web file-picker upload size (default 2 GiB)
+- `MM_COMBINE_PRESET=veryfast` / `MM_COMBINE_CRF=18` — H.264 settings used only when combined MP4 inputs require normalization
 - `MM_WEBM_CRF=34` — WebM quality/speed target; lower is higher quality and slower
 - `MM_WEBM_CPU_USED=5` — WebM VP9 speed setting; higher is faster with lower compression quality
 - `MM_WEBM_TILE_COLUMNS=2` — WebM VP9 tiling for parallel encoding
@@ -252,9 +272,13 @@ Or just copy the files and run the individual scripts directly.
 ├── convert.sh          # Local/remote media → GIF/MP3/MP4/WebM
 ├── mememaker.sh        # Interactive menu + full caption renderer
 ├── audio_video.sh      # Local/remote media + local audio → MP4/WebM
+├── combine_videos.sh    # Append local videos → MP4/WebM
 ├── build.sh            # HTML → video using puppeteer
 ├── capture.js
-├── web.js              # Local web UI server
+├── web.js              # HTTP routing for the local web UI
+├── server/             # Media inspection, fonts, processes, files, and jobs
+├── web/                # Shared library, drafts, media tools, and visual editor
+├── tests/              # Isolated server and browser regression tests
 ├── web/                # Static browser UI
 ├── install.sh          # The magic migration/installer
 ├── install-linux.sh

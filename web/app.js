@@ -1,1591 +1,211 @@
-'use strict';
+import { state, assetById, isVideo, editAsset, persist, escapeHtml as h, formatTime } from './state.js';
+import { post, upload } from './api.js';
+import { MediaTools } from './media-tools.js';
+import { MemeEditor } from './editor.js';
+import { JobClient } from './jobs.js';
 
-const tools = [
-  {
-    id: 'download-convert',
-    title: 'Download or Convert',
-    fields: [
-      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mov,.mp4,.webm,.mp3,.wav,.m4a,.aac,.ogg,image/gif,video/quicktime,video/mp4,video/webm,audio/*', sourceProbe: true },
-      { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
-      { name: 'end', label: 'End', span: 'quarter', placeholder: 'End time' },
-      { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['gif', 'GIF'], ['mp3', 'MP3'], ['webm', 'WebM']] },
-      { name: 'output', label: 'Output name', span: 'full', placeholder: 'defaults to media ID/name' }
-    ]
-  },
-  {
-    id: 'text-to-media',
-    title: 'Text to Media',
-    fields: [
-      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mov,.mp4,.webm,image/gif,video/quicktime,video/mp4,video/webm', sourceProbe: true },
-      { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
-      { name: 'end', label: 'End', span: 'quarter', placeholder: 'End time' },
-      { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['gif', 'GIF'], ['mp4', 'MP4'], ['webm', 'WebM']] },
-      { name: 'outputName', label: 'Output name', span: 'full', placeholder: 'defaults to media ID/name' },
-      { name: 'topText', label: 'Top text', type: 'textarea', span: 'field', placeholder: 'BOOM' },
-      { name: 'bottomText', label: 'Bottom text', type: 'textarea', span: 'field', placeholder: 'HEADSHOT' },
-      { name: 'topFontFamily', label: 'Top font face', type: 'select', span: 'quarter', options: [['', 'Auto'], ['Impact', 'Impact'], ['DejaVu Sans', 'DejaVu Sans'], ['Arial', 'Arial'], ['sans-serif', 'Sans'], ['serif', 'Serif'], ['monospace', 'Mono']] },
-      { name: 'topFontStyle', label: 'Top style', type: 'select', span: 'quarter', options: [['normal', 'Normal'], ['bold', 'Bold'], ['italic', 'Italic'], ['bold-italic', 'Bold Italic']] },
-      { name: 'topFontSize', label: 'Top size', type: 'number', span: 'quarter', value: '50', min: '1' },
-      { name: 'bottomFontFamily', label: 'Bottom font face', type: 'select', span: 'quarter', options: [['', 'Auto'], ['Impact', 'Impact'], ['DejaVu Sans', 'DejaVu Sans'], ['Arial', 'Arial'], ['sans-serif', 'Sans'], ['serif', 'Serif'], ['monospace', 'Mono']] },
-      { name: 'bottomFontStyle', label: 'Bottom style', type: 'select', span: 'quarter', options: [['normal', 'Normal'], ['bold', 'Bold'], ['italic', 'Italic'], ['bold-italic', 'Bold Italic']] },
-      { name: 'bottomFontSize', label: 'Bottom size', type: 'number', span: 'quarter', value: '50', min: '1' },
-      { name: 'topY', label: 'Top y', type: 'number', span: 'quarter', value: '15', min: '0' },
-      { name: 'bottomY', label: 'Bottom offset', type: 'number', span: 'quarter', value: '75', min: '0' },
-      { name: 'width', label: 'Width', type: 'number', span: 'quarter', value: '720', min: '1' },
-      { name: 'fontPath', label: 'Font path', span: 'full', placeholder: 'Default Font Detected: detecting...', accept: '.ttf,.otf,.ttc,font/*' }
-    ]
-  },
-  {
-    id: 'audio-to-video',
-    title: 'Audio to Video',
-    fields: [
-      { name: 'source', label: 'Source', required: true, span: 'full', placeholder: 'Supported URL or Local Media', accept: '.gif,.mov,.mp4,.webm,image/gif,video/quicktime,video/mp4,video/webm', sourceProbe: true },
-      { name: 'start', label: 'Start', required: true, span: 'quarter', value: '0:00' },
-      { name: 'end', label: 'End', span: 'quarter', placeholder: 'End time' },
-      { name: 'format', label: 'Output type', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['webm', 'WebM']] },
-      { name: 'audio', label: 'Input audio', required: true, span: 'full', placeholder: 'Supports MP3, WAV, M4A, AAC, OGG, and other FFmpeg-supported audio', accept: '.mp3,.wav,.m4a,.aac,.ogg,audio/*' },
-      { name: 'output', label: 'Output name', span: 'full', placeholder: 'defaults to media ID/name' }
-    ]
-  },
-  {
-    id: 'build-html',
-    title: 'Build HTML Animation',
-    fields: [
-      { name: 'html', label: 'HTML file', required: true, span: 'full', placeholder: 'index.html', accept: '.html,.htm,text/html' },
-      { name: 'format', label: 'Format', type: 'select', span: 'quarter', options: [['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF'], ['png', 'PNG']] },
-      { name: 'output', label: 'Output', span: 'full', placeholder: 'render' },
-      { name: 'seconds', label: 'Seconds', type: 'number', required: true, span: 'quarter', value: '5', min: '0.1', step: '0.1' },
-      { name: 'audio', label: 'Audio file', span: 'full', placeholder: 'Supports MP3, WAV, M4A, AAC, OGG, and other FFmpeg-supported audio', accept: '.mp3,.wav,.m4a,.aac,.ogg,audio/*' }
-    ]
-  },
-  {
-    id: 'experimental-gif-editor',
-    title: 'Experimental',
-    experimental: true
-  }
-];
+const mediaPanel = document.querySelector('#mediaPanel');
+const editorPanel = document.querySelector('#editorPanel');
+const list = document.querySelector('#assetList');
+const libraryStatus = document.querySelector('#libraryStatus');
+const jobs = new JobClient(job => addResult(job), job => {
+  const asset = addResult(job);
+  openEditor(asset);
+});
+const run = (action, fields) => jobs.run(action, fields);
+const media = new MediaTools(mediaPanel, run, changed);
+const editor = new MemeEditor(editorPanel, run, changed);
 
-const audioPlaceholder = 'Supports MP3, WAV, M4A, AAC, OGG, and other FFmpeg-supported audio';
-const appDefaults = {
-  defaultFontName: '',
-  defaultFontPath: ''
-};
-
-const toolTabs = document.querySelector('#toolTabs');
-const toolKicker = document.querySelector('#toolKicker');
-const toolForm = document.querySelector('#toolForm');
-const runButton = document.querySelector('#runButton');
-const cancelButton = document.querySelector('#cancelButton');
-const resetButton = document.querySelector('#resetButton');
-const jobStatus = document.querySelector('#jobStatus');
-const jobLog = document.querySelector('#jobLog');
-const outputLink = document.querySelector('#outputLink');
-const downloadLink = document.querySelector('#downloadLink');
-const serverStatus = document.querySelector('#serverStatus');
-const statusDot = document.querySelector('#statusDot');
-
-let activeTool = tools[0];
-let activeJobId = null;
-let eventSource = null;
-let sourceProbeTimer = null;
-let previewScrubTimer = null;
-let previewInputTimer = null;
-const editorState = {
-  naturalWidth: 0,
-  naturalHeight: 0,
-  duration: 0,
-  fps: 0,
-  frameCount: 0,
-  previewSource: '',
-  positionsInitialized: false,
-  cropInitialized: false,
-  dragging: null
-};
-const maxLogChars = 80000;
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+function changed(render = true) {
+  persist();
+  if (render) renderLibrary();
+  jobs.syncButtons();
 }
-
-function fieldClass(field) {
-  if (field.span === 'full') return 'field full';
-  if (field.span === 'third') return 'field third';
-  if (field.span === 'quarter') return 'field quarter';
-  return 'field';
+function addResult(job) {
+  let asset = state.assets.find(item => item.path === job.outputPath);
+  if (!asset) {
+    asset = { id: crypto.randomUUID(), path: job.outputPath, name: job.outputPath.split('/').pop(), fileUrl: job.fileUrl };
+    state.assets.push(asset);
+  } else { asset.fileUrl = job.fileUrl; delete asset.info; }
+  inspect(asset);
+  renderLibrary();
+  editor.updateSources();
+  persist();
+  return asset;
 }
-
-function defaultFontPlaceholder() {
-  return appDefaults.defaultFontName
-    ? `Default Font Detected: ${appDefaults.defaultFontName}`
-    : 'Default Font Detected: detecting...';
+function openEditor(asset) {
+  if (!isVideo(asset)) return;
+  editAsset(asset);
+  renderSection();
 }
-
-function normalizeYouTubeInput(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-
-  try {
-    const url = new URL(raw);
-    const host = url.hostname.replace(/^www\./, '');
-    if (host === 'youtu.be') {
-      return url.pathname.split('/').filter(Boolean)[0] || raw;
-    }
-    if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
-      const fromQuery = url.searchParams.get('v');
-      if (fromQuery) return fromQuery;
-      const parts = url.pathname.split('/').filter(Boolean);
-      const marker = parts.findIndex(part => ['shorts', 'embed', 'v'].includes(part));
-      if (marker >= 0 && parts[marker + 1]) return parts[marker + 1];
-    }
-  } catch {
-    return raw.split(/[?&#/]/)[0];
-  }
-
-  return raw;
-}
-
-function normalizeSourceInput(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-
-  try {
-    const url = new URL(raw);
-    const host = url.hostname.replace(/^www\./, '');
-    if (host === 'youtu.be') {
-      return url.pathname.split('/').filter(Boolean)[0] || raw;
-    }
-    if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
-      const fromQuery = url.searchParams.get('v');
-      if (fromQuery) return fromQuery;
-      const parts = url.pathname.split('/').filter(Boolean);
-      const marker = parts.findIndex(part => ['shorts', 'embed', 'v'].includes(part));
-      if (marker >= 0 && parts[marker + 1]) return parts[marker + 1];
-    }
-  } catch {
-    return raw;
-  }
-
-  return raw;
-}
-
-function looksLikeRemoteSource(value) {
-  const raw = String(value || '').trim();
-  return /^[A-Za-z0-9_-]{11}$/.test(raw) || /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(raw);
-}
-
-function parseTimeValue(value, { allowBlank = false, allowInf = false, label = 'Time' } = {}) {
-  const raw = String(value || '').trim();
-  if (!raw) {
-    if (allowBlank) return null;
-    throw new Error(`${label} is required.`);
-  }
-  if (allowInf && raw.toLowerCase() === 'inf') return Infinity;
-  if (!/^[0-9]+(?::[0-9]+){0,2}(?:\.[0-9]+)?$/.test(raw)) {
-    throw new Error(`${label} must be seconds, MM:SS, HH:MM:SS, or ${allowInf ? 'inf' : 'a valid time'}.`);
-  }
-  const parts = raw.split(':');
-  const seconds = Number(parts[parts.length - 1]);
-  if (!Number.isFinite(seconds) || seconds < 0) throw new Error(`${label} must be a valid time.`);
-  if (parts.length > 1 && seconds >= 60) {
-    throw new Error(`${label} seconds must be less than 60 when using colon format.`);
-  }
-  let total = seconds;
-  if (parts.length >= 2) {
-    const minutes = Number(parts[parts.length - 2]);
-    if (!Number.isInteger(minutes) || minutes < 0 || minutes >= 60) {
-      throw new Error(`${label} minutes must be a whole number less than 60 when using colon format.`);
-    }
-    total += minutes * 60;
-  }
-  if (parts.length === 3) {
-    const hours = Number(parts[0]);
-    if (!Number.isInteger(hours) || hours < 0) throw new Error(`${label} hours must be a non-negative whole number.`);
-    total += hours * 3600;
-  }
-  return total;
-}
-
-function validateTimeRange() {
-  const startInput = toolForm.querySelector('[name="start"]');
-  const endInput = toolForm.querySelector('[name="end"]');
-  if (!startInput && !endInput) return;
-  const start = parseTimeValue(startInput?.value || '0:00', { label: 'Start time' });
-  const end = parseTimeValue(endInput?.value || '', { allowBlank: true, allowInf: true, label: 'End time' });
-  if (end !== null && end !== Infinity && start >= end) {
-    throw new Error('Start time must be before end time.');
-  }
-}
-
-function parseFrameBoundary(value, { allowBlank = true, label = 'Output boundary' } = {}) {
-  const raw = String(value || '').trim();
-  if (!raw) {
-    if (allowBlank) return null;
-    throw new Error(`${label} is required.`);
-  }
-
-  const frameMatch = raw.match(/^(?:#|frame\s*:?\s*)?([0-9]+)\s*(?:f|frames?)$/i)
-    || raw.match(/^frame\s+([0-9]+)$/i);
-  if (frameMatch) {
-    const frame = Number(frameMatch[1]);
-    if (!Number.isInteger(frame) || frame < 0) {
-      throw new Error(`${label} frame must be a non-negative whole number.`);
-    }
-    const fps = Number(editorState.fps) || 0;
-    if (fps <= 0) {
-      throw new Error(`${label} uses a frame value, but source FPS is not available.`);
-    }
-    return { kind: 'frame', raw, frame, seconds: frame / fps };
-  }
-
-  return {
-    kind: 'time',
-    raw,
-    frame: null,
-    seconds: parseTimeValue(raw, { label })
-  };
-}
-
-function validateExperimentalOutputRange() {
-  if (activeTool.id !== 'experimental-gif-editor') return;
-  const startInput = experimentalField('outputStart');
-  const endInput = experimentalField('outputEnd');
-  if (!startInput && !endInput) return;
-  const start = parseFrameBoundary(startInput?.value || '', { label: 'Output Start' });
-  const end = parseFrameBoundary(endInput?.value || '', { label: 'Output End' });
-  if (start && end && start.seconds >= end.seconds) {
-    throw new Error('Output Start must be before Output End.');
-  }
-}
-
-function formatTimeLabel(seconds) {
-  const value = Math.max(0, Number(seconds) || 0);
-  const total = Math.floor(value);
-  const hrs = Math.floor(total / 3600);
-  const mins = Math.floor((total % 3600) / 60);
-  const secs = total % 60;
-  const frac = value - total;
-  const secLabel = frac > 0 ? (secs + frac).toFixed(1).padStart(4, '0') : String(secs).padStart(2, '0');
-  if (hrs > 0) return `${hrs}:${String(mins).padStart(2, '0')}:${secLabel}`;
-  return `${mins}:${secLabel}`;
-}
-
-function formatNumber(value, digits = 2) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '';
-  return number.toFixed(digits).replace(/\.?0+$/, '');
-}
-
-function renderField(field) {
-  const required = field.required ? ' required' : '';
-  const value = field.value ? ` value="${escapeHtml(field.value)}"` : '';
-  const placeholderText = field.name === 'fontPath'
-    ? defaultFontPlaceholder()
-    : (field.name === 'audio' ? audioPlaceholder : field.placeholder);
-  const placeholder = placeholderText ? ` placeholder="${escapeHtml(placeholderText)}"` : '';
-  const min = field.min ? ` min="${escapeHtml(field.min)}"` : '';
-  const step = field.step ? ` step="${escapeHtml(field.step)}"` : '';
-  const youtube = field.youtube ? ' data-youtube="true"' : '';
-  const sourceProbe = field.sourceProbe ? ' data-source-probe="true"' : '';
-  const accept = field.accept ? ` accept="${escapeHtml(field.accept)}"` : '';
-
-  if (field.type === 'select') {
-    const options = field.options
-      .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
-      .join('');
-    return `
-      <div class="${fieldClass(field)}">
-        <label for="${field.name}">${escapeHtml(field.label)}</label>
-        <select id="${field.name}" name="${field.name}"${required}>${options}</select>
-      </div>`;
-  }
-
-  if (field.type === 'textarea') {
-    return `
-      <div class="${fieldClass(field)}">
-        <label for="${field.name}">${escapeHtml(field.label)}</label>
-        <textarea id="${field.name}" name="${field.name}"${placeholder}${required}></textarea>
-      </div>`;
-  }
-
-  return `
-    <div class="${fieldClass(field)}">
-      <label for="${field.name}">${escapeHtml(field.label)}</label>
-      <div class="${field.accept ? 'file-field' : ''}">
-        <input id="${field.name}" name="${field.name}" type="${field.type || 'text'}"${value}${placeholder}${min}${step}${youtube}${sourceProbe}${required}>
-        ${field.accept ? `
-          <label class="file-button">
-            Browse
-            <input type="file" data-upload-for="${field.name}"${accept}>
-          </label>` : ''}
-      </div>
-      ${field.accept ? `<div class="field-status" data-upload-status-for="${field.name}"></div>` : ''}
-    </div>`;
-}
-
-function renderTabs() {
-  toolTabs.innerHTML = tools.map(tool => `
-    <button class="tab-button" type="button" data-tool="${tool.id}" aria-selected="${tool.id === activeTool.id}">
-      <span>${escapeHtml(tool.title)}</span>
-    </button>
-  `).join('');
-}
-
-function renderExperimentalEditor() {
-  return `
-    <div class="experimental-editor">
-      <div class="field-grid">
-        <div class="field full">
-          <label for="input">Input: URL / GIF / MOV / MP4 / WebM</label>
-          <div class="file-field">
-            <input id="input" name="input" type="text" placeholder="YouTube, Twitter/X, or local GIF/MOV/MP4/WebM" required>
-            <label class="file-button">
-              Browse
-              <input type="file" data-upload-for="input" accept=".gif,.mov,.webm,.mp4,image/gif,video/quicktime,video/webm,video/mp4">
-            </label>
-          </div>
-          <div class="field-status" data-upload-status-for="input">Input properties: Resolution • Length • Frames • FPS</div>
-        </div>
-        <div class="field output-field">
-          <label for="output">Output</label>
-          <input id="output" name="output" type="text" placeholder="input-visual">
-        </div>
-        <div class="field compact">
-          <label for="format">Output format</label>
-          <select id="format" name="format">
-            <option value="gif">GIF</option>
-            <option value="mp4">MP4</option>
-            <option value="webm">WebM</option>
-          </select>
-        </div>
-        <div class="field compact">
-          <label for="outputFps">Output FPS</label>
-          <input id="outputFps" name="outputFps" type="number" min="0.1" step="0.1" placeholder="auto">
-        </div>
-        <div class="field compact">
-          <label for="width">Output width</label>
-          <input id="width" name="width" type="number" min="1" value="720">
-        </div>
-        <div class="field">
-          <label for="outputStart">Output Start</label>
-          <input id="outputStart" name="outputStart" type="text" placeholder="0:00 or 0f" inputmode="decimal" data-output-boundary>
-        </div>
-        <div class="field">
-          <label for="outputEnd">Output End</label>
-          <input id="outputEnd" name="outputEnd" type="text" placeholder="0:01.5 or 18f" inputmode="decimal" data-output-boundary>
-        </div>
-        <div class="field">
-          <label for="cropDisplay">Crop area</label>
-          <input id="cropDisplay" type="text" value="Crop: full frame" readonly>
-        </div>
-        <div class="field">
-          <label for="cropResetButton">Crop</label>
-          <button id="cropResetButton" class="secondary-button" type="button">Reset crop</button>
-        </div>
-        <div class="field">
-          <label for="topText">Text 1</label>
-          <textarea id="topText" name="topText" data-editor-bind="topText">TOP</textarea>
-        </div>
-        <div class="field">
-          <label for="bottomText">Text 2</label>
-          <textarea id="bottomText" name="bottomText" data-editor-bind="bottomText">BOTTOM</textarea>
-        </div>
-        <div class="field">
-          <label for="topLocation">Text 1 location</label>
-          <input id="topLocation" type="text" value="Location: 0/0" readonly>
-        </div>
-        <div class="field">
-          <label for="bottomLocation">Text 2 location</label>
-          <input id="bottomLocation" type="text" value="Location: 0/0" readonly>
-        </div>
-        <div class="field font-face-field">
-          <label for="fontFamily">Font face</label>
-          <select id="fontFamily" name="fontFamily" data-editor-style>
-            <option value="sans-serif">Sans</option>
-            <option value="serif">Serif</option>
-            <option value="monospace">Mono</option>
-            <option value="Impact">Impact</option>
-            <option value="DejaVu Sans">DejaVu Sans</option>
-          </select>
-        </div>
-        <div class="field compact">
-          <label for="fontSize">Font size</label>
-          <input id="fontSize" name="fontSize" type="number" min="1" value="50" data-editor-style>
-        </div>
-        <div class="field full">
-          <label>Style</label>
-          <div class="toggle-row experimental-style-row">
-            <label class="toggle-pill"><input type="checkbox" name="bold" value="1" checked data-editor-style> Bold</label>
-            <label class="toggle-pill"><input type="checkbox" name="italic" value="1" data-editor-style> Italic</label>
-            <label class="toggle-pill"><input type="checkbox" name="underline" value="1" data-editor-style> Underline</label>
-            <label class="toggle-pill"><input type="checkbox" name="strike" value="1" data-editor-style> Strike</label>
-          </div>
-        </div>
-        <div class="field full">
-          <label for="fontPath">Font path</label>
-          <div class="file-field">
-            <input id="fontPath" name="fontPath" type="text" placeholder="${escapeHtml(defaultFontPlaceholder())}" data-editor-font-path>
-            <label class="file-button">
-              Browse
-              <input type="file" data-upload-for="fontPath" accept=".ttf,.otf,.ttc,font/*">
-            </label>
-          </div>
-          <div class="field-status" data-upload-status-for="fontPath"></div>
-        </div>
-        <div class="field">
-          <label for="previewTimeInput">Current time</label>
-          <input id="previewTimeInput" type="text" value="0:00" inputmode="decimal" disabled>
-        </div>
-        <div class="field">
-          <label for="previewFrameInput">Current frame</label>
-          <input id="previewFrameInput" type="number" min="0" step="1" value="0" disabled>
-        </div>
-        <div class="field">
-          <label>Total time</label>
-          <div class="readonly-field" id="previewTotalTimeLabel">0:00</div>
-        </div>
-        <div class="field">
-          <label>Total frames</label>
-          <div class="readonly-field" id="previewTotalFramesLabel">0</div>
-        </div>
-        <div class="field full">
-          <label for="previewTime">Scrub preview frame <span id="previewTimeLabel">Current: 0:00/0</span></label>
-          <input id="previewTime" type="range" min="0" max="0" step="0.1" value="0" disabled>
-        </div>
-      </div>
-
-      <input type="hidden" name="topX" value="0">
-      <input type="hidden" name="topY" value="0">
-      <input type="hidden" name="bottomX" value="0">
-      <input type="hidden" name="bottomY" value="0">
-      <input type="hidden" name="cropX" value="0">
-      <input type="hidden" name="cropY" value="0">
-      <input type="hidden" name="cropWidth" value="0">
-      <input type="hidden" name="cropHeight" value="0">
-
-      <div class="editor-stage">
-        <div class="editor-canvas" id="editorCanvas">
-          <div class="editor-placeholder" id="editorPlaceholder">No Preview</div>
-          <img id="editorPreview" alt="" hidden>
-          <div class="editor-text editor-text-one" data-editor-text="topText" tabindex="0">TOP</div>
-          <div class="editor-text editor-text-two" data-editor-text="bottomText" tabindex="0">BOTTOM</div>
-          <div class="crop-box" id="cropBox" hidden aria-hidden="true">
-            <span class="crop-handle crop-handle-n" data-crop-handle="n"></span>
-            <span class="crop-handle crop-handle-e" data-crop-handle="e"></span>
-            <span class="crop-handle crop-handle-s" data-crop-handle="s"></span>
-            <span class="crop-handle crop-handle-w" data-crop-handle="w"></span>
-            <span class="crop-handle crop-handle-nw" data-crop-handle="nw"></span>
-            <span class="crop-handle crop-handle-ne" data-crop-handle="ne"></span>
-            <span class="crop-handle crop-handle-sw" data-crop-handle="sw"></span>
-            <span class="crop-handle crop-handle-se" data-crop-handle="se"></span>
-          </div>
-        </div>
-      </div>
-    </div>`;
-}
-
-function renderTool(tool) {
-  activeTool = tool;
-  toolKicker.textContent = tool.title;
-  if (tool.experimental) {
-    clearTimeout(previewInputTimer);
-    clearTimeout(previewScrubTimer);
-    editorState.naturalWidth = 0;
-    editorState.naturalHeight = 0;
-    editorState.duration = 0;
-    editorState.fps = 0;
-    editorState.frameCount = 0;
-    editorState.previewSource = '';
-    editorState.positionsInitialized = false;
-    editorState.cropInitialized = false;
-    editorState.dragging = null;
-    toolForm.innerHTML = renderExperimentalEditor();
-    syncExperimentalEditor();
-  } else {
-    toolForm.innerHTML = `<div class="field-grid">${tool.fields.map(renderField).join('')}</div>`;
-  }
-  applyRuntimePlaceholders();
-  renderTabs();
-}
-
-function setJobState(status) {
-  jobStatus.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-  jobStatus.className = status === 'complete' ? 'status-complete' : (status === 'failed' || status === 'cancelled' ? `status-${status}` : '');
-}
-
-function appendLog(text) {
-  jobLog.textContent += text;
-  if (jobLog.textContent.length > maxLogChars) {
-    jobLog.textContent = `... trimmed earlier output ...\n${jobLog.textContent.slice(-maxLogChars)}`;
-  }
-  jobLog.scrollTop = jobLog.scrollHeight;
-}
-
-function setRunning(isRunning) {
-  runButton.disabled = isRunning;
-  cancelButton.disabled = !isRunning || !activeJobId;
-  resetButton.disabled = isRunning;
-}
-
-function showOutput(fileUrl, outputPath, downloadUrl) {
-  if (fileUrl) {
-    outputLink.href = fileUrl;
-    outputLink.textContent = outputPath ? `Open ${outputPath}` : 'Open output';
-    outputLink.hidden = false;
-  } else {
-    outputLink.hidden = true;
-    outputLink.removeAttribute('href');
-  }
-
-  if (downloadUrl) {
-    downloadLink.href = downloadUrl;
-    const filename = outputPath ? outputPath.split('/').pop() : '';
-    downloadLink.textContent = filename ? `Download ${filename}` : 'Download output';
-    if (filename) downloadLink.setAttribute('download', filename);
-    downloadLink.hidden = false;
-  } else {
-    downloadLink.hidden = true;
-    downloadLink.removeAttribute('href');
-    downloadLink.removeAttribute('download');
-  }
-}
-
-function cssFontFamily(value) {
-  switch (value) {
-    case 'serif':
-      return 'Georgia, "Times New Roman", serif';
-    case 'monospace':
-      return '"SFMono-Regular", Consolas, "Liberation Mono", monospace';
-    case 'Impact':
-      return 'Impact, Haettenschweiler, "Arial Black", sans-serif';
-    case 'DejaVu Sans':
-      return '"DejaVu Sans", Arial, sans-serif';
-    case 'sans-serif':
-    default:
-      return 'Inter, Arial, sans-serif';
-  }
-}
-
-function cssString(value) {
-  return String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '').replaceAll('\r', '');
-}
-
-function repoFileUrl(value) {
-  const rel = String(value || '').trim().replaceAll('\\', '/');
-  if (!rel || rel.startsWith('/') || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(rel)) return '';
-  const parts = rel.split('/').filter(Boolean);
-  if (parts.some(part => part === '.' || part === '..')) return '';
-  return `/files/${parts.map(encodeURIComponent).join('/')}`;
-}
-
-function experimentalFontUrl() {
-  const input = experimentalField('fontPath');
-  if (!input) return '';
-  return input.dataset.fileUrl || repoFileUrl(input.value);
-}
-
-function ensureExperimentalFontFace(url) {
-  const id = 'experimentalFontFace';
-  let style = document.querySelector(`#${id}`);
-  if (!url) {
-    if (style) style.textContent = '';
-    return '';
-  }
-
-  if (!style) {
-    style = document.createElement('style');
-    style.id = id;
-    document.head.appendChild(style);
-  }
-
-  style.textContent = `
-    @font-face {
-      font-family: "MM Experimental Font";
-      src: url("${cssString(url)}");
-      font-weight: 100 900;
-      font-style: normal;
-    }
-  `;
-  return '"MM Experimental Font"';
-}
-
-function editorElements() {
-  return {
-    canvas: toolForm.querySelector('#editorCanvas'),
-    preview: toolForm.querySelector('#editorPreview'),
-    placeholder: toolForm.querySelector('#editorPlaceholder'),
-    cropBox: toolForm.querySelector('#cropBox'),
-    top: toolForm.querySelector('[data-editor-text="topText"]'),
-    bottom: toolForm.querySelector('[data-editor-text="bottomText"]')
-  };
-}
-
-function editorScale() {
-  const { preview } = editorElements();
-  if (!preview || !editorState.naturalWidth || !editorState.naturalHeight) {
-    return { x: 1, y: 1 };
-  }
-  return {
-    x: preview.clientWidth / editorState.naturalWidth,
-    y: preview.clientHeight / editorState.naturalHeight
-  };
-}
-
-function clampNumber(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function cropMinimumSize() {
-  if (!editorState.naturalWidth || !editorState.naturalHeight) return 1;
-  return Math.max(1, Math.min(8, editorState.naturalWidth, editorState.naturalHeight));
-}
-
-function fullExperimentalCrop() {
-  return {
-    x: 0,
-    y: 0,
-    width: Math.max(0, Math.round(editorState.naturalWidth || 0)),
-    height: Math.max(0, Math.round(editorState.naturalHeight || 0))
-  };
-}
-
-function cropFieldValues() {
-  return {
-    x: experimentalField('cropX'),
-    y: experimentalField('cropY'),
-    width: experimentalField('cropWidth'),
-    height: experimentalField('cropHeight')
-  };
-}
-
-function clampExperimentalCrop(crop) {
-  const naturalWidth = Math.max(0, Math.round(editorState.naturalWidth || 0));
-  const naturalHeight = Math.max(0, Math.round(editorState.naturalHeight || 0));
-  if (!naturalWidth || !naturalHeight) return { x: 0, y: 0, width: 0, height: 0 };
-
-  const minSize = cropMinimumSize();
-  const maxX = Math.max(0, naturalWidth - minSize);
-  const maxY = Math.max(0, naturalHeight - minSize);
-  const x = clampNumber(Math.round(Number(crop.x) || 0), 0, maxX);
-  const y = clampNumber(Math.round(Number(crop.y) || 0), 0, maxY);
-  const width = clampNumber(Math.round(Number(crop.width) || naturalWidth), minSize, naturalWidth - x);
-  const height = clampNumber(Math.round(Number(crop.height) || naturalHeight), minSize, naturalHeight - y);
-
-  return { x, y, width, height };
-}
-
-function currentExperimentalCrop() {
-  const fields = cropFieldValues();
-  const full = fullExperimentalCrop();
-  if (!fields.width || !fields.height || Number(fields.width.value || 0) <= 0 || Number(fields.height.value || 0) <= 0) {
-    return full;
-  }
-  return clampExperimentalCrop({
-    x: Number(fields.x?.value || 0),
-    y: Number(fields.y?.value || 0),
-    width: Number(fields.width.value || full.width),
-    height: Number(fields.height.value || full.height)
+function renderSection() {
+  const editing = state.section === 'editor';
+  document.body.dataset.section = state.section;
+  document.querySelectorAll('[data-section]').forEach(button => {
+    if (button.dataset.section === state.section) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
   });
+  document.querySelector('#sectionTitle').textContent = editing ? 'Meme Editor' : 'Media Tools';
+  document.querySelector('#sectionEyebrow').textContent = editing ? 'MAKE IT YOURS' : 'YOUR MEDIA, READY TO GO';
+  document.querySelector('#sectionDescription').textContent = editing ? 'Find the moment. Add your caption. Make it a meme.' : 'Download, convert, or combine. Start with your files or a link.';
+  mediaPanel.hidden = editing;
+  editorPanel.hidden = !editing;
+  if (editing) editor.render();
+  else { editor.deactivate(); media.render(); }
+  renderLibrary();
+  jobs.syncButtons();
+  persist();
 }
-
-function isFullExperimentalCrop(crop) {
-  return crop.x === 0
-    && crop.y === 0
-    && crop.width === Math.round(editorState.naturalWidth || 0)
-    && crop.height === Math.round(editorState.naturalHeight || 0);
+function describeAsset(asset) {
+  const info = asset.info;
+  return asset.error || (info ? [info.duration ? formatTime(info.duration) : '', info.width ? `${info.width} × ${info.height}` : 'Audio'].filter(Boolean).join(' · ') : /\.html?$/i.test(asset.path) ? 'HTML animation' : 'Inspecting…');
 }
-
-function setExperimentalCrop(crop) {
-  const next = clampExperimentalCrop(crop);
-  const fields = cropFieldValues();
-  if (fields.x) fields.x.value = String(next.x);
-  if (fields.y) fields.y.value = String(next.y);
-  if (fields.width) fields.width.value = String(next.width);
-  if (fields.height) fields.height.value = String(next.height);
-
-  const display = toolForm.querySelector('#cropDisplay');
-  if (display) {
-    display.value = isFullExperimentalCrop(next)
-      ? `Crop: full frame (${next.width}x${next.height})`
-      : `Crop: ${next.x}/${next.y} ${next.width}x${next.height}`;
-  }
-
-  const { cropBox } = editorElements();
-  if (!cropBox || !next.width || !next.height) return;
-  const scale = editorScale();
-  cropBox.hidden = false;
-  cropBox.style.left = `${next.x * scale.x}px`;
-  cropBox.style.top = `${next.y * scale.y}px`;
-  cropBox.style.width = `${next.width * scale.x}px`;
-  cropBox.style.height = `${next.height * scale.y}px`;
+function renderLibrary() {
+  const combining = state.section === 'media' && state.operation === 'combine';
+  const ordered = combining ? [...state.selectedIds.map(assetById).filter(Boolean), ...state.assets.filter(asset => !state.selectedIds.includes(asset.id))] : state.assets;
+  list.innerHTML = ordered.map(asset => {
+    const selected = state.selectedIds.includes(asset.id);
+    const editing = state.section === 'editor' && state.editor.sourceId === asset.id;
+    const description = describeAsset(asset);
+    return `<li class="asset-card ${selected || editing ? 'selected' : ''}" data-asset="${h(asset.id)}">
+      <label class="asset-select"><input type="${combining ? 'checkbox' : 'radio'}" name="selectedAsset" value="${h(asset.id)}" ${selected ? 'checked' : ''}><span><strong title="${h(asset.name)}">${h(asset.name)}</strong><small class="${asset.error ? 'error' : ''}">${h(description)}</small></span></label>
+      <div class="asset-actions">${isVideo(asset) ? `<button type="button" data-edit="${h(asset.id)}" class="text-button">Edit →</button>` : ''}${combining && selected ? `<span class="reorder-actions"><button type="button" data-move="-1" aria-label="Move ${h(asset.name)} earlier" ${state.selectedIds.indexOf(asset.id) === 0 ? 'disabled' : ''}>↑</button><button type="button" data-move="1" aria-label="Move ${h(asset.name)} later" ${state.selectedIds.indexOf(asset.id) === state.selectedIds.length - 1 ? 'disabled' : ''}>↓</button></span>` : ''}<button type="button" class="text-button remove-asset" data-remove="${h(asset.id)}" aria-label="Remove ${h(asset.name)} from library">×</button></div>
+    </li>`;
+  }).join('');
+  document.querySelector('#assetCount').textContent = state.assets.length;
+  document.querySelector('#libraryEmpty').hidden = state.assets.length > 0;
 }
-
-function initializeExperimentalCrop() {
-  setExperimentalCrop(fullExperimentalCrop());
-  editorState.cropInitialized = true;
-}
-
-function refreshExperimentalCrop() {
-  if (!editorState.naturalWidth || !editorState.naturalHeight) return;
-  setExperimentalCrop(currentExperimentalCrop());
-}
-
-function resetExperimentalCrop() {
-  if (!editorState.naturalWidth || !editorState.naturalHeight) return;
-  setExperimentalCrop(fullExperimentalCrop());
-  editorState.cropInitialized = true;
-}
-
-function clearExperimentalCrop() {
-  const fields = cropFieldValues();
-  if (fields.x) fields.x.value = '0';
-  if (fields.y) fields.y.value = '0';
-  if (fields.width) fields.width.value = '0';
-  if (fields.height) fields.height.value = '0';
-  const display = toolForm.querySelector('#cropDisplay');
-  if (display) display.value = 'Crop: full frame';
-  const { cropBox } = editorElements();
-  if (cropBox) cropBox.hidden = true;
-  editorState.cropInitialized = false;
-}
-
-function validateExperimentalCrop() {
-  if (activeTool.id !== 'experimental-gif-editor') return;
-  const fields = cropFieldValues();
-  const width = Number(fields.width?.value || 0);
-  const height = Number(fields.height?.value || 0);
-  if (!width && !height) return;
-  const crop = currentExperimentalCrop();
-  if (crop.width <= 0 || crop.height <= 0) {
-    throw new Error('Crop width and height must be greater than zero.');
-  }
-  if (editorState.naturalWidth && editorState.naturalHeight) {
-    const inside = crop.x >= 0
-      && crop.y >= 0
-      && crop.x + crop.width <= editorState.naturalWidth
-      && crop.y + crop.height <= editorState.naturalHeight;
-    if (!inside) throw new Error('Crop area must stay inside the input media.');
-  }
-}
-
-function experimentalField(name) {
-  return toolForm.querySelector(`[name="${CSS.escape(name)}"]`);
-}
-
-function setExperimentalLocationDisplay(textName, x, y) {
-  const id = textName === 'topText' ? 'topLocation' : 'bottomLocation';
-  const input = toolForm.querySelector(`#${id}`);
-  if (input) input.value = `Location: ${x}/${y}`;
-}
-
-function setExperimentalPosition(textName, x, y) {
-  const overlay = toolForm.querySelector(`[data-editor-text="${CSS.escape(textName)}"]`);
-  const xInput = experimentalField(textName === 'topText' ? 'topX' : 'bottomX');
-  const yInput = experimentalField(textName === 'topText' ? 'topY' : 'bottomY');
-  if (!overlay || !xInput || !yInput) return;
-
-  const scale = editorScale();
-  const naturalX = Math.max(0, Math.round(x));
-  const naturalY = Math.max(0, Math.round(y));
-  xInput.value = String(naturalX);
-  yInput.value = String(naturalY);
-  overlay.style.left = `${naturalX * scale.x}px`;
-  overlay.style.top = `${naturalY * scale.y}px`;
-  setExperimentalLocationDisplay(textName, naturalX, naturalY);
-}
-
-function refreshExperimentalPositions() {
-  setExperimentalPosition('topText', Number(experimentalField('topX')?.value || 0), Number(experimentalField('topY')?.value || 0));
-  setExperimentalPosition('bottomText', Number(experimentalField('bottomX')?.value || 0), Number(experimentalField('bottomY')?.value || 0));
-}
-
-function applyExperimentalStyles() {
-  if (activeTool.id !== 'experimental-gif-editor') return;
-  const family = experimentalField('fontFamily')?.value || 'sans-serif';
-  const size = Math.max(1, Number(experimentalField('fontSize')?.value || 50));
-  const scale = editorScale();
-  const displaySize = Math.max(8, Math.round(size * scale.x));
-  const isBold = Boolean(experimentalField('bold')?.checked);
-  const isItalic = Boolean(experimentalField('italic')?.checked);
-  const decorations = [];
-  if (experimentalField('underline')?.checked) decorations.push('underline');
-  if (experimentalField('strike')?.checked) decorations.push('line-through');
-  const customFont = ensureExperimentalFontFace(experimentalFontUrl());
-  const fallbackFont = cssFontFamily(family);
-  const previewFont = customFont ? `${customFont}, ${fallbackFont}` : fallbackFont;
-
-  for (const overlay of toolForm.querySelectorAll('.editor-text')) {
-    overlay.style.fontFamily = previewFont;
-    overlay.style.fontSize = `${displaySize}px`;
-    overlay.style.fontWeight = isBold ? '900' : '500';
-    overlay.style.fontStyle = isItalic ? 'italic' : 'normal';
-    overlay.style.textDecoration = decorations.join(' ');
-  }
-}
-
-function syncExperimentalEditor() {
-  if (activeTool.id !== 'experimental-gif-editor') return;
-  const { top, bottom } = editorElements();
-  const topText = experimentalField('topText')?.value || '';
-  const bottomText = experimentalField('bottomText')?.value || '';
-  if (top) {
-    top.textContent = topText;
-    top.hidden = !topText;
-  }
-  if (bottom) {
-    bottom.textContent = bottomText;
-    bottom.hidden = !bottomText;
-  }
-  applyExperimentalStyles();
-  refreshExperimentalPositions();
-}
-
-function initializeExperimentalPositions() {
-  const sizeInput = experimentalField('fontSize');
-  if (sizeInput && sizeInput.value === '50') {
-    const autoSize = Math.min(64, Math.max(18, Math.round((editorState.naturalWidth || 720) / 14)));
-    sizeInput.value = String(autoSize);
-  }
-  const size = Math.max(1, Number(sizeInput?.value || 50));
-  const inset = Math.max(12, Math.round(editorState.naturalWidth * 0.05));
-  const topY = Math.max(0, Math.round(editorState.naturalHeight * 0.08));
-  const bottomY = Math.max(0, editorState.naturalHeight - size - Math.round(editorState.naturalHeight * 0.12));
-  experimentalField('width').value = String(editorState.naturalWidth || 720);
-  setExperimentalPosition('topText', inset, topY);
-  setExperimentalPosition('bottomText', inset, bottomY);
-  applyExperimentalStyles();
-}
-
-function experimentalPreviewTime() {
-  const slider = toolForm.querySelector('#previewTime');
-  return Math.max(0, Number(slider?.value || 0));
-}
-
-function previewMaxFrame() {
-  return Math.max(0, Math.floor(Number(editorState.frameCount) || 0) - 1);
-}
-
-function frameFromTime(seconds) {
-  const fps = Number(editorState.fps) || 0;
-  if (fps <= 0) return 0;
-  return Math.min(previewMaxFrame(), Math.max(0, Math.round((Number(seconds) || 0) * fps)));
-}
-
-function timeFromFrame(frame) {
-  const fps = Number(editorState.fps) || 0;
-  if (fps <= 0) return 0;
-  return Math.max(0, (Number(frame) || 0) / fps);
-}
-
-function clampPreviewTime(seconds) {
-  const value = Math.max(0, Number(seconds) || 0);
-  return editorState.duration > 0 ? Math.min(editorState.duration, value) : value;
-}
-
-function experimentalMetadataSummary() {
-  if (!editorState.naturalWidth || !editorState.naturalHeight) {
-    return 'Input properties: Resolution • Length • Frames • FPS';
-  }
-  const resolution = `${editorState.naturalWidth} × ${editorState.naturalHeight}`;
-  const length = editorState.duration ? formatTimeLabel(editorState.duration) : '-';
-  const frames = editorState.frameCount || '-';
-  const fps = editorState.fps ? formatNumber(editorState.fps) : '-';
-  return `Input properties: Resolution ${resolution} • Length ${length} • Frames ${frames} • FPS ${fps}`;
-}
-
-function setExperimentalMediaStatus(prefix = '', state = 'ready') {
-  const summary = experimentalMetadataSummary();
-  setUploadStatus('input', [summary, prefix].filter(Boolean).join(' * '), state);
-}
-
-function experimentalPreviewStatus(input, seconds) {
-  const at = formatTimeLabel(seconds);
-  return looksLikeRemoteSource(input)
-    ? `Fetching online preview clip at ${at}...`
-    : `Rendering local preview frame at ${at}...`;
-}
-
-function syncExperimentalPreviewControls(seconds) {
-  const slider = toolForm.querySelector('#previewTime');
-  const label = toolForm.querySelector('#previewTimeLabel');
-  const timeInput = toolForm.querySelector('#previewTimeInput');
-  const frameInput = toolForm.querySelector('#previewFrameInput');
-  const totalTimeLabel = toolForm.querySelector('#previewTotalTimeLabel');
-  const totalFramesLabel = toolForm.querySelector('#previewTotalFramesLabel');
-  const value = clampPreviewTime(seconds);
-  const frame = frameFromTime(value);
-  const totalTime = editorState.duration ? formatTimeLabel(editorState.duration) : '0:00';
-  const totalFrames = editorState.frameCount || 0;
-  const enabled = editorState.duration > 0;
-
-  if (slider) slider.value = String(value);
-  if (timeInput) {
-    timeInput.value = formatTimeLabel(value);
-    timeInput.disabled = !enabled;
-  }
-  if (frameInput) {
-    frameInput.value = String(frame);
-    frameInput.max = String(previewMaxFrame());
-    frameInput.disabled = !enabled || !editorState.fps;
-  }
-  if (totalTimeLabel) totalTimeLabel.textContent = totalTime;
-  if (totalFramesLabel) totalFramesLabel.textContent = String(totalFrames);
-  if (label) label.textContent = `Current: ${formatTimeLabel(value)}/${frame}`;
-}
-
-function setExperimentalPreviewTime(seconds, { load = true } = {}) {
-  syncExperimentalPreviewControls(seconds);
-  if (load) queueExperimentalPreview();
-}
-
-function setExperimentalPreviewFrame(frame, { load = true } = {}) {
-  const maxFrame = previewMaxFrame();
-  const value = Math.min(maxFrame, Math.max(0, Math.round(Number(frame) || 0)));
-  setExperimentalPreviewTime(timeFromFrame(value), { load });
-}
-
-function setExperimentalScrub(info) {
-  const slider = toolForm.querySelector('#previewTime');
-  const source = info && typeof info === 'object' ? info : { duration: info };
-  const value = Math.max(0, Number(source.duration) || 0);
-  const fps = Math.max(0, Number(source.fps) || 0);
-  const givenFrames = Math.max(0, Math.floor(Number(source.frameCount) || 0));
-  const estimatedFrames = value > 0 && fps > 0 ? Math.max(1, Math.round(value * fps)) : 0;
-  editorState.duration = value;
-  editorState.fps = fps;
-  editorState.frameCount = givenFrames || estimatedFrames;
-  if (source.width && source.height) {
-    editorState.naturalWidth = Number(source.width) || editorState.naturalWidth;
-    editorState.naturalHeight = Number(source.height) || editorState.naturalHeight;
-  }
-  if (!slider) return;
-  slider.max = value > 0 ? String(value) : '0';
-  slider.step = fps > 0 ? (formatNumber(1 / fps, 4) || '0.001') : '0.1';
-  slider.value = '0';
-  slider.disabled = value <= 0;
-  syncExperimentalPreviewControls(0);
-}
-
-function refreshExperimentalScrubLabel() {
-  syncExperimentalPreviewControls(experimentalPreviewTime());
-}
-
-function queueExperimentalPreview(delay = 250) {
-  clearTimeout(previewInputTimer);
-  previewInputTimer = setTimeout(() => {
-    loadExperimentalPreview().catch(err => {
-      setUploadStatus('input', err.message, 'error');
-      appendLog(`${err.message}\n`);
-    });
-  }, delay);
-}
-
-function applyExperimentalTimeInput() {
-  const input = toolForm.querySelector('#previewTimeInput');
-  if (!input || input.disabled) return;
+async function inspect(asset) {
+  if (/\.html?$/i.test(asset.path)) return;
   try {
-    const seconds = parseTimeValue(input.value, { label: 'Preview time' });
-    setExperimentalPreviewTime(seconds);
+    const info = await post('/api/source-info', { source: asset.path });
+    if (!state.assets.includes(asset)) return;
+    asset.info = info;
+    if (info.kind === 'remote' && info.title) asset.name = info.title;
+    asset.fileUrl = info.fileUrl || asset.fileUrl;
+    asset.error = '';
   } catch (err) {
-    setUploadStatus('input', err.message, 'error');
-    syncExperimentalPreviewControls(experimentalPreviewTime());
+    if (!state.assets.includes(asset)) return;
+    asset.error = err.message.split('\n').pop();
+  }
+  if (jobs.result?.outputPath === asset.path && !jobs.busy) jobs.showResult(jobs.result);
+  // Updating this asset never writes values into a draft or another source's fields.
+  const card = list.querySelector(`[data-asset="${CSS.escape(asset.id)}"]`);
+  if (card) {
+    card.querySelector('strong').textContent = asset.name;
+    card.querySelector('strong').title = asset.name;
+    card.querySelector('small').textContent = describeAsset(asset);
+    card.querySelector('small').classList.toggle('error', Boolean(asset.error));
+  }
+  if (state.section === 'media') media.updateSourceInfo();
+  editor.updateSources();
+  changed(false);
+}
+function addSource(path, name, fileUrl) {
+  let asset = state.assets.find(item => item.path === path);
+  if (!asset) {
+    asset = { id: crypto.randomUUID(), path, name: name || path.split('/').pop() || path, fileUrl };
+    state.assets.push(asset);
+  }
+  if (state.operation === 'combine' && state.section === 'media') {
+    if (!state.selectedIds.includes(asset.id)) state.selectedIds.push(asset.id);
+  } else state.selectedIds = [asset.id];
+  renderLibrary();
+  if (state.section === 'media') media.render();
+  editor.updateSources();
+  if (state.section === 'editor' && !state.editor.sourceId && isVideo(asset)) openEditor(asset);
+  inspect(asset);
+  changed(false);
+  return asset;
+}
+let uploadsInFlight = 0;
+async function addFiles(files) {
+  for (const file of files) {
+    uploadsInFlight += 1;
+    libraryStatus.textContent = `Uploading ${file.name}…`;
+    try {
+      const result = await upload(file);
+      addSource(result.path, file.name, result.fileUrl);
+      libraryStatus.textContent = `Added ${file.name}`;
+    } catch (err) { libraryStatus.textContent = err.message; }
+    finally { uploadsInFlight -= 1; }
   }
 }
 
-function applyExperimentalFrameInput() {
-  const input = toolForm.querySelector('#previewFrameInput');
-  if (!input || input.disabled) return;
-  setExperimentalPreviewFrame(input.value);
-}
-
-async function loadExperimentalSourceInfo(input) {
-  const message = looksLikeRemoteSource(input)
-    ? 'Inspecting online media...'
-    : 'Inspecting local media...';
-  setUploadStatus('input', message, 'busy');
-  const response = await fetch('/api/source-info', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ source: input })
-  });
-  const body = await response.json();
-  if (!response.ok) {
-    throw new Error(body.error || 'Could not inspect preview input.');
+document.querySelectorAll('[data-section]').forEach(button => button.addEventListener('click', () => {
+  if (state.section === button.dataset.section) return;
+  state.section = button.dataset.section;
+  if (state.section === 'editor' && !state.editor.sourceId) {
+    const asset = state.selectedIds.map(assetById).find(isVideo) || state.assets.find(isVideo);
+    if (asset) editAsset(asset);
   }
-  setExperimentalScrub(body);
-  setExperimentalMediaStatus('', 'ready');
-  return body;
-}
-
-async function loadExperimentalPreview() {
-  if (activeTool.id !== 'experimental-gif-editor') return;
-  const input = experimentalField('input')?.value.trim();
-  if (!input) return;
-  if (editorState.previewSource !== input) {
-    await loadExperimentalSourceInfo(input);
-    editorState.previewSource = input;
-    editorState.positionsInitialized = false;
-    editorState.cropInitialized = false;
-  }
-  const time = experimentalPreviewTime();
-
-  setUploadStatus('input', experimentalPreviewStatus(input, time), 'busy');
-  const response = await fetch('/api/preview-frame', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ input, time: String(time) })
-  });
-  const body = await response.json();
-  if (!response.ok) {
-    throw new Error(body.error || 'Could not load preview.');
-  }
-
-  const { canvas, preview, placeholder } = editorElements();
-  if (!canvas || !preview) return;
-  await new Promise((resolve, reject) => {
-    preview.onload = resolve;
-    preview.onerror = () => reject(new Error('Could not render preview frame.'));
-    preview.src = `${body.fileUrl}?t=${Date.now()}`;
-  });
-
-  editorState.naturalWidth = preview.naturalWidth;
-  editorState.naturalHeight = preview.naturalHeight;
-  preview.hidden = false;
-  if (placeholder) placeholder.hidden = true;
-  canvas.classList.add('has-preview');
-  canvas.style.aspectRatio = `${editorState.naturalWidth} / ${editorState.naturalHeight}`;
-  if (!editorState.positionsInitialized) {
-    initializeExperimentalPositions();
-    editorState.positionsInitialized = true;
+  renderSection();
+}));
+document.querySelector('.brand').addEventListener('click', event => { event.preventDefault(); state.section = 'media'; renderSection(); });
+document.querySelector('#addSourceForm').addEventListener('submit', event => {
+  event.preventDefault();
+  const input = document.querySelector('#sourceInput');
+  const value = input.value.trim();
+  if (value) { addSource(value); input.value = ''; }
+});
+document.querySelector('#mediaUpload').addEventListener('change', event => {
+  addFiles(Array.from(event.target.files));
+  event.target.value = '';
+});
+const dropZone = document.querySelector('#dropZone');
+for (const type of ['dragenter','dragover']) dropZone.addEventListener(type, event => { event.preventDefault(); dropZone.classList.add('dragging'); });
+for (const type of ['dragleave','drop']) dropZone.addEventListener(type, event => {
+  event.preventDefault(); dropZone.classList.remove('dragging');
+  if (type === 'drop') addFiles(Array.from(event.dataTransfer.files));
+});
+list.addEventListener('change', event => {
+  if (!event.target.matches('[name="selectedAsset"]')) return;
+  const id = event.target.value;
+  if (state.section === 'media' && state.operation === 'combine') {
+    if (event.target.checked) state.selectedIds.push(id);
+    else state.selectedIds = state.selectedIds.filter(item => item !== id);
   } else {
-    applyExperimentalStyles();
-    refreshExperimentalPositions();
+    state.selectedIds = [id];
+    if (state.section === 'editor') openEditor(assetById(id));
   }
-  if (!editorState.cropInitialized) {
-    initializeExperimentalCrop();
-  } else {
-    refreshExperimentalCrop();
+  if (state.section === 'media') media.render();
+  changed();
+});
+list.addEventListener('click', event => {
+  const edit = event.target.closest('[data-edit]');
+  if (edit) openEditor(assetById(edit.dataset.edit));
+  const move = event.target.closest('[data-move]');
+  if (move) {
+    const id = move.closest('[data-asset]').dataset.asset;
+    const index = state.selectedIds.indexOf(id);
+    const next = index + Number(move.dataset.move);
+    if (next >= 0 && next < state.selectedIds.length) [state.selectedIds[index], state.selectedIds[next]] = [state.selectedIds[next], state.selectedIds[index]];
+    media.render();
   }
-  syncExperimentalPreviewControls(time);
-  setExperimentalMediaStatus('', 'ready');
-}
-
-function beginExperimentalDrag(event) {
-  const cropHandle = event.target.closest('[data-crop-handle]');
-  if (activeTool.id === 'experimental-gif-editor' && cropHandle && !cropHandle.closest('#cropBox')?.hidden) {
-    const { canvas } = editorElements();
-    if (!canvas || !editorState.naturalWidth || !editorState.naturalHeight) return;
-    editorState.dragging = {
-      type: 'crop',
-      handle: cropHandle.dataset.cropHandle,
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      crop: currentExperimentalCrop()
-    };
-    if (typeof cropHandle.setPointerCapture === 'function' && event.pointerId !== undefined) {
-      cropHandle.setPointerCapture(event.pointerId);
+  const remove = event.target.closest('[data-remove]');
+  if (remove) {
+    const id = remove.dataset.remove;
+    state.assets = state.assets.filter(asset => asset.id !== id);
+    state.selectedIds = state.selectedIds.filter(value => value !== id);
+    if (state.editor.sourceId === id) {
+      state.editor.sourceId = '';
+      if (state.section === 'editor') editor.render();
     }
-    event.preventDefault();
-    return;
+    editor.updateSources();
+    if (state.section === 'media') media.render();
   }
-
-  const overlay = event.target.closest('.editor-text');
-  if (activeTool.id !== 'experimental-gif-editor' || !overlay || overlay.hidden) return;
-  const { canvas } = editorElements();
-  if (!canvas || !editorState.naturalWidth || !editorState.naturalHeight) return;
-
-  const overlayRect = overlay.getBoundingClientRect();
-  editorState.dragging = {
-    type: 'text',
-    name: overlay.dataset.editorText,
-    offsetX: event.clientX - overlayRect.left,
-    offsetY: event.clientY - overlayRect.top
-  };
-  if (typeof overlay.setPointerCapture === 'function' && event.pointerId !== undefined) {
-    overlay.setPointerCapture(event.pointerId);
-  }
-  event.preventDefault();
-}
-
-function moveExperimentalCropDrag(event) {
-  const drag = editorState.dragging;
-  if (!drag || drag.type !== 'crop') return;
-
-  const scale = editorScale();
-  const dx = scale.x > 0 ? (event.clientX - drag.startClientX) / scale.x : 0;
-  const dy = scale.y > 0 ? (event.clientY - drag.startClientY) / scale.y : 0;
-  const minSize = cropMinimumSize();
-  let left = drag.crop.x;
-  let top = drag.crop.y;
-  let right = drag.crop.x + drag.crop.width;
-  let bottom = drag.crop.y + drag.crop.height;
-  const handle = drag.handle || '';
-
-  if (handle.includes('w')) left += dx;
-  if (handle.includes('e')) right += dx;
-  if (handle.includes('n')) top += dy;
-  if (handle.includes('s')) bottom += dy;
-
-  if (handle.includes('w')) left = clampNumber(left, 0, right - minSize);
-  if (handle.includes('e')) right = clampNumber(right, left + minSize, editorState.naturalWidth);
-  if (handle.includes('n')) top = clampNumber(top, 0, bottom - minSize);
-  if (handle.includes('s')) bottom = clampNumber(bottom, top + minSize, editorState.naturalHeight);
-
-  setExperimentalCrop({
-    x: left,
-    y: top,
-    width: right - left,
-    height: bottom - top
-  });
-  event.preventDefault();
-}
-
-function moveExperimentalDrag(event) {
-  if (!editorState.dragging || activeTool.id !== 'experimental-gif-editor') return;
-  if (editorState.dragging.type === 'crop') {
-    moveExperimentalCropDrag(event);
-    return;
-  }
-  const { canvas } = editorElements();
-  const overlay = toolForm.querySelector(`[data-editor-text="${CSS.escape(editorState.dragging.name)}"]`);
-  if (!canvas || !overlay) return;
-
-  const rect = canvas.getBoundingClientRect();
-  const scale = editorScale();
-  const maxX = Math.max(0, rect.width - overlay.offsetWidth);
-  const maxY = Math.max(0, rect.height - overlay.offsetHeight);
-  const cssX = Math.min(maxX, Math.max(0, event.clientX - rect.left - editorState.dragging.offsetX));
-  const cssY = Math.min(maxY, Math.max(0, event.clientY - rect.top - editorState.dragging.offsetY));
-  setExperimentalPosition(editorState.dragging.name, cssX / scale.x, cssY / scale.y);
-}
-
-function endExperimentalDrag() {
-  editorState.dragging = null;
-}
-
-function formFields() {
-  for (const input of toolForm.querySelectorAll('[data-youtube="true"]')) {
-    input.value = normalizeYouTubeInput(input.value);
-  }
-  for (const input of toolForm.querySelectorAll('[data-source-probe]')) {
-    input.value = normalizeSourceInput(input.value);
-  }
-  validateTimeRange();
-  validateExperimentalOutputRange();
-  validateExperimentalCrop();
-
-  const data = new FormData(toolForm);
-  const fields = {};
-  for (const [key, value] of data.entries()) {
-    fields[key] = value;
-  }
-  return fields;
-}
-
-function setUploadStatus(fieldName, message, state = '') {
-  const status = toolForm.querySelector(`[data-upload-status-for="${CSS.escape(fieldName)}"]`);
-  if (!status) return;
-  status.textContent = message;
-  status.dataset.state = state;
-}
-
-function setEndValue(label) {
-  const end = toolForm.querySelector('[name="end"]');
-  if (!end) return;
-  if (label) {
-    end.value = label;
-  }
-  end.placeholder = 'End time';
-}
-
-function applyRuntimePlaceholders() {
-  for (const input of toolForm.querySelectorAll('[name="fontPath"]')) {
-    input.placeholder = defaultFontPlaceholder();
-  }
-  for (const input of toolForm.querySelectorAll('[name="audio"]')) {
-    input.placeholder = audioPlaceholder;
-  }
-}
-
-function resetActiveForm() {
-  const tool = activeTool;
-  clearTimeout(sourceProbeTimer);
-  renderTool(tool);
-}
-
-function outputNameField() {
-  return toolForm.querySelector('[name="output"], [name="outputName"]');
-}
-
-function sourceStatusMessage(info) {
-  const pieces = [];
-  pieces.push(info.kind === 'local' ? 'Local media' : 'Supported source');
-  if (info.durationLabel) pieces.push(info.durationLabel);
-  if (info.extractor) pieces.push(info.extractor);
-  if (info.title) pieces.push(info.title);
-  return pieces.join(' • ');
-}
-
-async function probeSource(input) {
-  if (!input || !input.matches('[data-source-probe]')) return null;
-  input.value = normalizeSourceInput(input.value);
-  const source = input.value.trim();
-  const fieldName = input.name;
-  if (!source) {
-    setUploadStatus(fieldName, '', '');
-    return null;
-  }
-
-  setUploadStatus(fieldName, 'Checking source...', 'busy');
-  const response = await fetch('/api/source-info', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ source })
-  });
-  const body = await response.json();
-  if (!response.ok) {
-    throw new Error(body.error || 'Source is not supported.');
-  }
-
-  setUploadStatus(fieldName, sourceStatusMessage(body), 'ready');
-  setEndValue(body.durationLabel || '');
-  const output = outputNameField();
-  if (output && !output.value.trim() && body.defaultStem) {
-    output.value = body.defaultStem;
-  }
-  return body;
-}
-
-function queueSourceProbe(input) {
-  clearTimeout(sourceProbeTimer);
-  sourceProbeTimer = setTimeout(() => {
-    probeSource(input).catch(err => {
-      setUploadStatus(input.name, err.message, 'error');
-    });
-  }, 700);
-}
-
-async function uploadFile(file, targetName) {
-  const input = toolForm.querySelector(`[name="${CSS.escape(targetName)}"]`);
-  if (!input) return;
-
-  setUploadStatus(targetName, `Uploading ${file.name}...`, 'busy');
-  const response = await fetch(`/api/uploads?name=${encodeURIComponent(file.name)}`, {
-    method: 'POST',
-    headers: { 'content-type': file.type || 'application/octet-stream' },
-    body: file
-  });
-  const body = await response.json();
-
-  if (!response.ok) {
-    throw new Error(body.error || `Upload failed for ${file.name}`);
-  }
-
-  input.value = body.path;
-  input.dataset.fileUrl = body.fileUrl || '';
-  setUploadStatus(targetName, `Selected ${body.path}`, 'ready');
-  return body;
-}
-
-function fileFieldForTarget(targetName) {
-  const picker = toolForm.querySelector(`[data-upload-for="${CSS.escape(targetName)}"]`);
-  return picker ? picker.closest('.file-field') : null;
-}
-
-async function handleSelectedFile(file, targetName) {
-  if (!file || !targetName) return null;
-
-  const field = fileFieldForTarget(targetName);
-  if (field) field.classList.remove('is-dragging');
-
-  await uploadFile(file, targetName);
-  const targetInput = toolForm.querySelector(`[name="${CSS.escape(targetName)}"]`);
-  if (targetInput && targetInput.matches('[data-source-probe]')) {
-    return probeSource(targetInput);
-  }
-  if (activeTool.id === 'experimental-gif-editor' && targetName === 'input') {
-    return loadExperimentalPreview();
-  }
-  if (activeTool.id === 'experimental-gif-editor' && targetName === 'fontPath') {
-    applyExperimentalStyles();
-    refreshExperimentalPositions();
-  }
-  return null;
-}
-
-async function createJob() {
-  if (eventSource) {
-    eventSource.close();
-    eventSource = null;
-  }
-
-  activeJobId = null;
-  jobLog.textContent = '';
-  showOutput(null, null, null);
-  setJobState('running');
-  setRunning(true);
-
-  const response = await fetch('/api/jobs', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action: activeTool.id, fields: formFields() })
-  });
-  const body = await response.json();
-
-  if (!response.ok) {
-    throw new Error(body.error || 'Could not start job.');
-  }
-
-  activeJobId = body.id;
-  showOutput(body.fileUrl, body.outputPath, body.downloadUrl);
-  setRunning(true);
-  connectEvents(body.id);
-}
-
-function connectEvents(jobId) {
-  eventSource = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/events`);
-
-  eventSource.addEventListener('status', event => {
-    const data = JSON.parse(event.data);
-    setJobState(data.status || 'running');
-    showOutput(data.fileUrl, data.outputPath, data.downloadUrl);
-    if (data.command) appendLog(`$ ${data.command}\n`);
-  });
-
-  eventSource.addEventListener('log', event => {
-    const data = JSON.parse(event.data);
-    appendLog(data.text || '');
-  });
-
-  eventSource.addEventListener('done', event => {
-    const data = JSON.parse(event.data);
-    setJobState(data.status || 'complete');
-    showOutput(data.fileUrl, data.outputPath, data.downloadUrl);
-    appendLog(`\n[${data.status}] exit=${data.exitCode ?? ''} signal=${data.signal || ''}\n`);
-    setRunning(false);
-    eventSource.close();
-    eventSource = null;
-  });
-
-  eventSource.onerror = () => {
-    appendLog('\n[event stream disconnected]\n');
-    setRunning(false);
-  };
-}
-
-async function cancelJob() {
-  if (!activeJobId) return;
-  await fetch(`/api/jobs/${encodeURIComponent(activeJobId)}/cancel`, { method: 'POST' });
-  cancelButton.disabled = true;
-}
-
-async function checkHealth() {
+  changed();
+});
+window.addEventListener('beforeunload', event => {
+  if (uploadsInFlight) { event.preventDefault(); event.returnValue = ''; }
+});
+async function health() {
   try {
     const response = await fetch('/api/health');
-    if (!response.ok) throw new Error('bad status');
-    const data = await response.json();
-    statusDot.classList.add('ready');
-    serverStatus.textContent = data.localOnly ? 'Local server ready' : 'Server ready';
-    if (data.defaultFont && data.defaultFont.name) {
-      appDefaults.defaultFontName = data.defaultFont.name;
-      appDefaults.defaultFontPath = data.defaultFont.path || '';
-      applyRuntimePlaceholders();
-    }
-  } catch {
-    statusDot.classList.remove('ready');
-    serverStatus.textContent = 'Server unavailable';
-  }
+    if (!response.ok) throw new Error('Unavailable');
+    document.querySelector('#serverStatus').textContent = '● Local server ready';
+  } catch { document.querySelector('#serverStatus').textContent = 'Server unavailable'; }
 }
-
-toolTabs.addEventListener('click', event => {
-  const button = event.target.closest('[data-tool]');
-  if (!button) return;
-  const tool = tools.find(item => item.id === button.dataset.tool);
-  if (tool) renderTool(tool);
-});
-
-toolForm.addEventListener('blur', event => {
-  if (event.target.matches('[data-youtube="true"]')) {
-    event.target.value = normalizeYouTubeInput(event.target.value);
-  }
-  if (event.target.matches('[data-source-probe]')) {
-    probeSource(event.target).catch(err => {
-      setUploadStatus(event.target.name, err.message, 'error');
-      appendLog(`${err.message}\n`);
-    });
-  }
-  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[name="input"]')) {
-    loadExperimentalPreview().catch(err => {
-      setUploadStatus('input', err.message, 'error');
-      appendLog(`${err.message}\n`);
-    });
-  }
-  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[data-editor-font-path]')) {
-    applyExperimentalStyles();
-  }
-  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[data-output-boundary]')) {
-    try {
-      validateExperimentalOutputRange();
-      setExperimentalMediaStatus('', editorState.naturalWidth ? 'ready' : '');
-    } catch (err) {
-      setUploadStatus('input', err.message, 'error');
-    }
-  }
-}, true);
-
-toolForm.addEventListener('change', event => {
-  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('#previewTimeInput')) {
-    applyExperimentalTimeInput();
-    return;
-  }
-  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('#previewFrameInput')) {
-    applyExperimentalFrameInput();
-    return;
-  }
-
-  const picker = event.target.closest('[data-upload-for]');
-  if (!picker || !picker.files || picker.files.length === 0) {
-    if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[data-editor-style]')) {
-      applyExperimentalStyles();
-    }
-    return;
-  }
-
-  const file = picker.files[0];
-  const targetName = picker.dataset.uploadFor;
-  handleSelectedFile(file, targetName).catch(err => {
-    setUploadStatus(targetName, err.message, 'error');
-    appendLog(`${err.message}\n`);
-  }).finally(() => {
-    picker.value = '';
-  });
-});
-
-toolForm.addEventListener('dragenter', event => {
-  const field = event.target.closest('.file-field');
-  const picker = field && field.querySelector('[data-upload-for]');
-  if (!picker || !event.dataTransfer || !Array.from(event.dataTransfer.types || []).includes('Files')) return;
-  event.preventDefault();
-  field.classList.add('is-dragging');
-});
-
-toolForm.addEventListener('dragover', event => {
-  const field = event.target.closest('.file-field');
-  const picker = field && field.querySelector('[data-upload-for]');
-  if (!picker || !event.dataTransfer) return;
-  event.preventDefault();
-  event.dataTransfer.dropEffect = 'copy';
-  field.classList.add('is-dragging');
-});
-
-toolForm.addEventListener('dragleave', event => {
-  const field = event.target.closest('.file-field');
-  if (!field || field.contains(event.relatedTarget)) return;
-  field.classList.remove('is-dragging');
-});
-
-toolForm.addEventListener('drop', event => {
-  const field = event.target.closest('.file-field');
-  const picker = field && field.querySelector('[data-upload-for]');
-  if (!picker || !event.dataTransfer || event.dataTransfer.files.length === 0) return;
-
-  event.preventDefault();
-  const targetName = picker.dataset.uploadFor;
-  const file = event.dataTransfer.files[0];
-  field.classList.remove('is-dragging');
-  handleSelectedFile(file, targetName).catch(err => {
-    setUploadStatus(targetName, err.message, 'error');
-    appendLog(`${err.message}\n`);
-  });
-});
-
-toolForm.addEventListener('input', event => {
-  if (event.target.matches('[data-source-probe]')) {
-    queueSourceProbe(event.target);
-  }
-
-  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('[name="input"]')) {
-    editorState.previewSource = '';
-    editorState.positionsInitialized = false;
-    editorState.cropInitialized = false;
-    editorState.naturalWidth = 0;
-    editorState.naturalHeight = 0;
-    clearExperimentalCrop();
-    setExperimentalScrub(0);
-    if (event.target.value.trim()) queueExperimentalPreview(700);
-  }
-
-  if (activeTool.id === 'experimental-gif-editor' && event.target.matches('#previewTime')) {
-    clearTimeout(previewScrubTimer);
-    syncExperimentalPreviewControls(event.target.value);
-    previewScrubTimer = setTimeout(() => setExperimentalPreviewTime(event.target.value), 250);
-  }
-
-  if (activeTool.id !== 'experimental-gif-editor') return;
-  if (event.target.matches('[data-editor-bind]')) {
-    syncExperimentalEditor();
-  }
-  if (event.target.matches('[data-editor-style]')) {
-    applyExperimentalStyles();
-    refreshExperimentalPositions();
-  }
-  if (event.target.matches('[data-editor-font-path]')) {
-    event.target.dataset.fileUrl = '';
-    applyExperimentalStyles();
-    refreshExperimentalPositions();
-  }
-});
-
-toolForm.addEventListener('keydown', event => {
-  if (activeTool.id !== 'experimental-gif-editor' || event.key !== 'Enter') return;
-  if (event.target.matches('#previewTimeInput')) {
-    event.preventDefault();
-    applyExperimentalTimeInput();
-  }
-  if (event.target.matches('#previewFrameInput')) {
-    event.preventDefault();
-    applyExperimentalFrameInput();
-  }
-});
-
-toolForm.addEventListener('click', event => {
-  if (activeTool.id === 'experimental-gif-editor' && event.target.closest('#cropResetButton')) {
-    event.preventDefault();
-    resetExperimentalCrop();
-  }
-});
-
-toolForm.addEventListener('pointerdown', beginExperimentalDrag);
-document.addEventListener('pointermove', moveExperimentalDrag);
-document.addEventListener('pointerup', endExperimentalDrag);
-document.addEventListener('pointercancel', endExperimentalDrag);
-toolForm.addEventListener('mousedown', beginExperimentalDrag);
-document.addEventListener('mousemove', moveExperimentalDrag);
-document.addEventListener('mouseup', endExperimentalDrag);
-
-toolForm.addEventListener('submit', event => {
-  event.preventDefault();
-  createJob().catch(err => {
-    setJobState('failed');
-    appendLog(`${err.message}\n`);
-    setRunning(false);
-  });
-});
-
-cancelButton.addEventListener('click', () => {
-  cancelJob().catch(err => appendLog(`${err.message}\n`));
-});
-
-resetButton.addEventListener('click', resetActiveForm);
-
-window.addEventListener('resize', () => {
-  if (activeTool.id !== 'experimental-gif-editor') return;
-  refreshExperimentalPositions();
-  refreshExperimentalCrop();
-});
-
-renderTool(activeTool);
-checkHealth();
+renderSection();
+health();
+for (const asset of state.assets) inspect(asset);

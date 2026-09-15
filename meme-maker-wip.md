@@ -1,27 +1,14 @@
 # Meme Maker WIP
 
-Meme Maker WIP changes from user. Update this file as items move from planned
-to implemented to verified.
+## Two-section app — 2026-09-15
 
-## Experimental Changes
+- [x] Media Tools: convert/download, combine, extract audio, replace audio.
+- [x] Meme Editor: preview, trim, crop, captions, and export.
+- [x] Shared media library with output-to-editor handoff.
+- [x] Preserve drafts across section switches and refreshes.
+- [x] Move detailed settings and HTML animation behind Advanced.
+- [x] Playable results, download actions, and expandable processing logs.
+- [x] Fix caption scaling, trim overwrites, stale previews, and blocking probes.
+- [x] Add server and browser regression tests.
 
-- [x] Allow Text fields to be blank.
-  - Status: Verified.
-  - Notes: The Experimental backend no longer rejects empty Text 1 + Text 2. Blank text renders trim/crop/format output without drawtext filters.
-- [x] Allow input to be online media.
-  - Status: Verified.
-  - Notes: Experimental accepts local GIF/MP4/WebM plus YouTube IDs/URLs and other `yt-dlp`-supported URLs. Remote preview frames use a temporary one-second `yt-dlp` download, and remote renders use `mememaker.sh` remote mode with the visual editor options.
-
-## Additional Ask
-- [x] Code Review.
-  - Status: Completed.
-  - Notes: Review notes were refreshed in `meme-maker-review.md`.
-- [x] Top recommendations for Experimental page.
-  - Status: Completed.
-  - Notes: Recommendations were added to `meme-maker-review.md`.
-
-## Validation
-
-- `npm test` covers blank text, remote Experimental preview/job creation, and decimal-zero yt-dlp section handling.
-- `npm run doctor` checks local dependencies and linked commands.
-- `git diff --check` checks whitespace.
+See `README.md` for usage and `meme-maker-review.md` for the review follow-up.
