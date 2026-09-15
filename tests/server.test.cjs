@@ -59,3 +59,54 @@ test('media server regressions', {skip:process.platform === 'win32' ? 'Integrati
     await waitFor(()=>{try{process.kill(pid,0);return false;}catch{return true;}},'preview child exit');
   });
 });
+
+test('job timing and step progress survive status requests and event reconnection', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async () => {
+  const f = await fixture();
+  let active;
+  try {
+    const completed = await f.job('download-convert', { source:f.input, start:'0', end:'1', format:'mp4', output:'timing-complete' });
+    assert.ok(Date.parse(completed.finishedAt) >= Date.parse(completed.startedAt));
+    assert.deepEqual(completed.progress.steps.map(step => step.status), ['complete']);
+
+    fs.writeFileSync(path.join(f.root, 'convert.sh'), `#!/usr/bin/env bash
+trap 'exit 143' TERM INT
+printf "Input #0, mov, from 'input.mp4':\\n  Duration: 00:00:02.00, start: 0.000000\\nOutput #0, webm, to 'videos/timed.webm':\\nframe=5 time=00:00:00.50 speed=0.25x\\r" >&2
+sleep 30
+`);
+    active = await f.post('/api/jobs', { action:'download-convert', fields:{ source:f.input, start:'0', end:'1', format:'webm', output:'timed' } });
+    assert.ok(Number.isFinite(Date.parse(active.startedAt)));
+    const current = await waitFor(async () => {
+      const job = await (await fetch(`${f.url}/api/jobs/${active.id}`)).json();
+      return job.progress?.remainingSeconds === 2 ? job : null;
+    }, 'render estimate');
+    assert.equal(current.progress.percent, 50);
+    assert.equal(current.progress.steps[0].status, 'running');
+    const response = await fetch(`${f.url}/api/jobs/${active.id}/events`);
+    const reader = response.body.getReader();
+    let events = '';
+    try {
+      while (!events.includes('event: snapshot\n')) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        events += new TextDecoder().decode(value);
+      }
+    } finally { await reader.cancel(); }
+    const snapshot = JSON.parse(events.match(/event: snapshot\ndata: (.*)\n/)[1]);
+    assert.equal(snapshot.startedAt, active.startedAt);
+    assert.equal(snapshot.progress.remainingSeconds, 2);
+    await f.post(`/api/jobs/${active.id}/cancel`, {});
+    const cancelled = await waitFor(async () => {
+      const job = await (await fetch(`${f.url}/api/jobs/${active.id}`)).json();
+      return job.status === 'cancelled' ? job : null;
+    }, 'cancelled timing job');
+    assert.deepEqual(cancelled.progress.steps.map(step => step.status), ['cancelled']);
+    assert.ok(Date.parse(cancelled.finishedAt) >= Date.parse(cancelled.startedAt));
+    active = null;
+  } finally {
+    if (active) {
+      await f.post(`/api/jobs/${active.id}/cancel`, {});
+      await waitFor(async () => (await (await fetch(`${f.url}/api/jobs/${active.id}`)).json()).status !== 'running', 'test process cleanup');
+    }
+    await f.close();
+  }
+});

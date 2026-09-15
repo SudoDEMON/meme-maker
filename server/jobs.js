@@ -10,6 +10,7 @@ const {
 const { sourceInfo } = require('./media');
 const { publicFileUrl, publicDownloadUrl } = require('./files');
 const { signalChildTree, canSignalProcessGroup } = require('./processes');
+const { JobProgress } = require('./job-progress');
 const jobs = new Map();
 
 async function buildJob(action, fields) {
@@ -242,6 +243,7 @@ function terminateJob(job) {
 }
 
 async function startJob(action, fields) {
+  const startedAt = new Date().toISOString();
   const built = await buildJob(action, fields);
   const id = crypto.randomUUID();
   const fileUrl = publicFileUrl(built.outputPath);
@@ -257,8 +259,9 @@ async function startJob(action, fields) {
     status: 'running',
     exitCode: null,
     signal: null,
-    startedAt: new Date().toISOString(),
+    startedAt,
     finishedAt: null,
+    progress: null,
     clients: new Set(),
     events: [],
     child: null,
@@ -288,19 +291,30 @@ async function startJob(action, fields) {
   job.child = child;
   job.pid = child.pid;
 
-  child.stdout.on('data', chunk => emit(job, 'log', { stream: 'stdout', text: chunk.toString() }));
-  child.stderr.on('data', chunk => emit(job, 'log', { stream: 'stderr', text: chunk.toString() }));
+  const progress = new JobProgress(action, fields || {}, built, data => {
+    job.progress = data;
+    emit(job, 'progress', data);
+  });
+  progress.publish();
+  for (const stream of ['stdout', 'stderr']) child[stream].on('data', chunk => {
+    const text = chunk.toString();
+    progress.push(stream, text);
+    emit(job, 'log', { stream, text });
+  });
 
   child.on('error', err => {
     if (job.killTimer) clearTimeout(job.killTimer);
     job.status = 'failed';
     job.finishedAt = new Date().toISOString();
+    progress.finish(job.status);
     emit(job, 'log', { stream: 'stderr', text: `${err.message}\n` });
     emit(job, 'done', {
       status: job.status,
       exitCode: job.exitCode,
       signal: job.signal,
+      startedAt: job.startedAt,
       finishedAt: job.finishedAt,
+      progress: job.progress,
       outputPath: job.outputPath,
       fileUrl: job.fileUrl,
       downloadUrl: job.downloadUrl
@@ -308,16 +322,20 @@ async function startJob(action, fields) {
   });
 
   child.on('close', (code, signal) => {
+    if (job.status !== 'running') return;
     if (job.killTimer) clearTimeout(job.killTimer);
     job.exitCode = code;
     job.signal = signal;
     job.status = job.cancelRequested ? 'cancelled' : (code === 0 ? 'complete' : 'failed');
     job.finishedAt = new Date().toISOString();
+    progress.finish(job.status);
     emit(job, 'done', {
       status: job.status,
       exitCode: code,
       signal,
+      startedAt: job.startedAt,
       finishedAt: job.finishedAt,
+      progress: job.progress,
       outputPath: job.outputPath,
       fileUrl: job.fileUrl,
       downloadUrl: job.downloadUrl

@@ -225,3 +225,68 @@ test('media selection survives clicks, keyboard input, and refresh', {skip:proce
   assert.deepEqual(await selected(),['second.mp4']);
   assert.deepEqual(await page.$$eval('.source-summary li',els=>els.map(el=>el.textContent)),['second.mp4']);
 });
+
+test('job timing shows elapsed time, estimates and steps through refresh and completion', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
+  const f=await fixture();
+  t.after(()=>f.close());
+  const browser=await puppeteer.launch({headless:true,args:['--no-sandbox']});
+  t.after(()=>browser.close());
+  const page=await browser.newPage();
+  const errors=[];
+  page.on('pageerror',err=>errors.push(err.message));
+  await page.evaluateOnNewDocument(input=>{
+    window.testNow=Date.parse('2026-09-15T12:02:05Z');
+    Date.now=()=>window.testNow;
+    window.testProgress={ remainingSeconds:45, percent:25, updatedAt:new Date(window.testNow).toISOString(), steps:[
+      {id:'download',label:'Download media',status:'complete'},
+      {id:'encode',label:'Convert to WEBM',status:'running'}
+    ] };
+    window.testJob={id:'timing-test',status:'running',startedAt:'2026-09-15T12:00:00Z',progress:window.testProgress,outputPath:input,fileUrl:'/files/input.mp4',downloadUrl:'/download/input.mp4'};
+    const originalFetch=window.fetch;
+    window.fetch=(url,options)=>{
+      if(url==='/api/jobs' || url==='/api/jobs/timing-test') return Promise.resolve(new Response(JSON.stringify(window.testJob),{status:options?.method==='POST'?201:200,headers:{'content-type':'application/json'}}));
+      return originalFetch(url,options);
+    };
+    window.EventSource=class extends EventTarget {
+      constructor() { super(); window.testStream=this; }
+      set onerror(handler) { this.addEventListener('error',handler); }
+      close() {}
+    };
+  },f.input);
+  await page.goto(f.url);
+  await page.waitForSelector('#mediaForm');
+  assert.equal(await page.$eval('#jobTiming',el=>el.hidden),true);
+  await fill(page,'#sourceInput',f.input);
+  await page.click('#addSourceForm button');
+  await page.click('#mediaForm [data-run]');
+  await page.waitForFunction(()=>window.testStream && document.querySelector('#jobElapsed').textContent==='2:05');
+  assert.equal(await page.$eval('#jobEstimate',el=>el.textContent),'About 0:45');
+  assert.deepEqual(await page.$$eval('#jobSteps li',els=>els.map(el=>el.dataset.status)),['complete','running']);
+  await page.evaluate(()=>{window.testNow+=2000;});
+  await page.waitForFunction(()=>document.querySelector('#jobElapsed').textContent==='2:07');
+  await page.evaluate(()=>window.testStream.dispatchEvent(new Event('error')));
+  assert.equal(await page.$eval('#jobEstimate',el=>el.textContent),'Reconnecting…');
+  assert.equal(await page.$eval('#mediaForm [data-run]',el=>el.disabled),true);
+
+  await page.reload();
+  await page.waitForFunction(()=>document.querySelector('#jobElapsed').textContent==='2:05' && document.querySelector('#jobEstimate').textContent==='About 0:45');
+  assert.deepEqual(await page.$$eval('#jobSteps li',els=>els.map(el=>el.dataset.status)),['complete','running']);
+  await page.evaluate(()=>{window.testNow+=15000;});
+  await page.waitForFunction(()=>document.querySelector('#jobEstimate').textContent==='Estimating…');
+  assert.equal(await page.$eval('#jobProgress',el=>el.hasAttribute('value')),false);
+
+  await page.setViewport({width:390,height:844});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.evaluate(()=>{
+    const progress={...window.testProgress,updatedAt:new Date(window.testNow).toISOString(),steps:window.testProgress.steps.map(step=>({...step,status:'complete'}))};
+    window.testStream.dispatchEvent(new MessageEvent('done',{data:JSON.stringify({...window.testJob,status:'complete',finishedAt:'2026-09-15T12:02:10Z',progress})}));
+  });
+  await page.waitForFunction(()=>document.querySelector('#resultTitle').textContent==='Ready to save');
+  assert.equal(await page.$eval('#jobElapsed',el=>el.textContent),'2:10');
+  assert.equal(await page.$eval('#jobEstimateRow',el=>el.hidden),true);
+  assert.deepEqual(await page.$$eval('#jobSteps li',els=>els.map(el=>el.dataset.status)),['complete','complete']);
+  await page.reload();
+  await page.waitForFunction(()=>document.querySelector('#jobElapsed').textContent==='2:10');
+  assert.equal(await page.$eval('#jobEstimateRow',el=>el.hidden),true);
+  assert.deepEqual(errors,[]);
+});

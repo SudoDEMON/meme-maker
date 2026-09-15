@@ -82,6 +82,8 @@ async function handleRequest(req, res) {
       sendJson(res, 201, {
         id: job.id,
         status: job.status,
+        startedAt: job.startedAt,
+        progress: job.progress,
         outputPath: job.outputPath,
         fileUrl: job.fileUrl,
         downloadUrl: job.downloadUrl
@@ -111,6 +113,9 @@ async function handleRequest(req, res) {
     for (const payload of job.events) {
       res.write(`event: ${payload.event}\ndata: ${JSON.stringify(payload.data)}\n\n`);
     }
+    // Logs are bounded. Always restore timing/progress even after the original
+    // status event and media headers have fallen out of the replay buffer.
+    res.write(`event: snapshot\ndata: ${JSON.stringify({ status: job.status, startedAt: job.startedAt, finishedAt: job.finishedAt, progress: job.progress })}\n\n`);
     req.on('close', () => job.clients.delete(res));
     return;
   }
@@ -146,6 +151,7 @@ async function handleRequest(req, res) {
       signal: job.signal,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
+      progress: job.progress,
       outputPath: job.outputPath,
       fileUrl: job.fileUrl,
       downloadUrl: job.downloadUrl

@@ -81,6 +81,15 @@ Processing logs are expandable. The browser reconnects to an active job after
 a connection interruption or refresh, and keeps Cancel available while checking
 its status. Jobs themselves are in memory and do not survive server restarts.
 
+The processing panel shows **Elapsed Time**, **Estimated Time Left**, and a
+checklist of completed, running, and waiting steps. Elapsed time covers the whole
+job, survives refresh/reconnection, and stops when the job completes or stops.
+Estimates use download progress or the current encoder speed and media duration,
+including trims and the shorter soundtrack when replacing audio. They apply to
+the current step, reset between passes, and show **Estimating…** when progress
+is unavailable or stale. Audio replacement and output encoding share one step;
+GIF palettes, downloads, and preparatory trims appear separately when needed.
+
 The editor supports local GIF/MOV/MP4/WebM and remote video. Local files served
 by this app play and seek directly when the browser supports their codec;
 external filesystem paths and remote sources use extracted frame previews.
