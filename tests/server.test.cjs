@@ -8,6 +8,18 @@ const { fixture, waitFor, brightBounds } = require('./helpers.cjs');
 test('media server regressions', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
   const f = await fixture();
   t.after(() => f.close());
+  await t.test('remote caption export downloads, prepares, and encodes distinct temporary files', async () => {
+    const job = await f.job('meme-editor', {
+      input:'https://example.test/remote.mp4', format:'webm', output:'remote-caption',
+      topText:'REMOTE WEBM', fontSize:'64', width:'320', outputStart:'', outputEnd:''
+    });
+    assert.ok(brightBounds(path.join(f.root, job.outputPath), 320).count > 100, 'remote export contains its caption');
+    const metadata = await f.post('/api/source-info', { source:job.outputPath });
+    assert.ok(metadata.duration >= 1.9 && metadata.duration < 2.2);
+    const download = await fetch(f.url + job.downloadUrl);
+    assert.equal(download.status, 200);
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), fs.readFileSync(path.join(f.root, job.outputPath)));
+  });
   await t.test('omitted boundaries preserve full exports and zero-length editor ranges are rejected', async () => {
     for (const [action, fields] of [
       ['download-convert', { source:f.input, format:'mp4' }],

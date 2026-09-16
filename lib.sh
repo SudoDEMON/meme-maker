@@ -102,11 +102,16 @@ _make_temp() {
     ext="$e"
     shift 2
   fi
-  local tmp
+  # BSD mktemp only randomizes trailing Xs; mm.XXXXXX.mp4 can be a literal
+  # filename on macOS. Reserve a unique directory first, then add the suffix
+  # inside it. Keeping that directory also reserves names for later downloads.
+  local slot tmp
+  slot=$(mktemp -d "$MM_TEMP_ROOT/mm.XXXXXX") || return
+  tmp="$slot/artifact${ext}"
   if [[ $kind == "dir" ]]; then
-    tmp=$(mktemp -d "$MM_TEMP_ROOT/mm.XXXXXX${ext}")
+    mkdir "$tmp" || return
   else
-    tmp=$(mktemp "$MM_TEMP_ROOT/mm.XXXXXX${ext}")
+    : > "$tmp" || return
   fi
   MM_TEMP_PATHS+=("$tmp")
   printf '%s\n' "$tmp"
@@ -115,8 +120,9 @@ _make_temp() {
 make_temp_file() { _make_temp file "$@"; }
 make_temp_dir()  { _make_temp dir  "$@"; }
 
-# Like make_temp_file, but immediately removes the empty placeholder file
-# that mktemp creates. The *name* is still registered for automatic cleanup.
+# Like make_temp_file, but immediately removes the empty placeholder file.
+# Its containing directory reserves the name until MM_TEMP_ROOT is cleaned up,
+# including when this function is called through command substitution.
 # Use this for paths you will pass to yt-dlp (or similar tools that have
 # "file already exists / has already been downloaded" detection and may
 # refuse to overwrite a 0-byte file we pre-created).
