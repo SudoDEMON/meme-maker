@@ -56,8 +56,8 @@ show_mememaker_help() {
   cat <<'EOF'
 Usage:
   ./mememaker.sh
-  ./mememaker.sh [options] <youtube-id-or-url> <start> [end] <gif|mp4|webm> "<top text>" "<bottom text>" [custom-name] [font-path]
-  ./mememaker.sh --no-text [options] <youtube-id-or-url> <start> [end] <gif|mp4|webm> [custom-name]
+  ./mememaker.sh [options] <youtube-id-or-url> [start] [end] <gif|mp4|webm> "<top text>" "<bottom text>" [custom-name] [font-path]
+  ./mememaker.sh --no-text [options] <youtube-id-or-url> [start] [end] <gif|mp4|webm> [custom-name]
   ./mememaker.sh --caption-local [options] <input.(gif|mov|mp4|webm)> <output.(gif|mp4|webm)> "<top text>" "<bottom text>" [font-path]
 
 Options:
@@ -101,7 +101,8 @@ Examples:
 
 Outputs are placed in gifs/ for GIFs and videos/ for MP4/WebM unless using
 --caption-local, where the output path is used exactly.
-Leave end blank/omitted to download from start to the end of the video.
+Leave Start blank/omitted for the beginning and End blank/omitted for the end.
+Omit both times to use the full source; a single time argument is Start.
 
 This script requires: yt-dlp, ffmpeg
 EOF
@@ -349,8 +350,12 @@ encode_media() {
   local palette
   local gif_fps="${OUTPUT_FPS:-$FPS}"
   local video_filter
+  local encoder=ffmpeg
   local -a trim_args=()
 
+  if [[ -n "$caption_filter" ]]; then
+    encoder="$(caption_ffmpeg)"
+  fi
   ensure_parent_dir "$out"
 
   if [[ -n "$trim_start" ]] && ! is_zero_time "$trim_start"; then
@@ -367,10 +372,10 @@ encode_media() {
       filter="$(compose_render_filter "fps=$gif_fps,$base_filter" "$caption_filter")"
 
       info "Generating palette..."
-      ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter,palettegen" -frames:v 1 -update 1 "$palette"
+      "$encoder" -y -i "$input" "${trim_args[@]}" -vf "$filter,palettegen" -frames:v 1 -update 1 "$palette"
 
       info "Creating GIF..."
-      ffmpeg -y -i "$input" -i "$palette" "${trim_args[@]}" -lavfi \
+      "$encoder" -y -i "$input" -i "$palette" "${trim_args[@]}" -lavfi \
              "$filter,paletteuse=dither=floyd_steinberg" \
              -loop 0 "$out"
       ;;
@@ -379,7 +384,7 @@ encode_media() {
       [[ -n "$OUTPUT_FPS" ]] && video_filter="fps=$OUTPUT_FPS,$video_filter"
       filter="$(compose_render_filter "$video_filter" "$caption_filter")"
       info "Creating MP4..."
-      ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter" \
+      "$encoder" -y -i "$input" "${trim_args[@]}" -vf "$filter" \
              -c:v libx264 -crf 23 -preset slow -movflags +faststart \
              -pix_fmt yuv420p "$out"
       ;;
@@ -388,7 +393,7 @@ encode_media() {
       [[ -n "$OUTPUT_FPS" ]] && video_filter="fps=$OUTPUT_FPS,$video_filter"
       filter="$(compose_render_filter "$video_filter" "$caption_filter")"
       info "Creating WebM..."
-      ffmpeg -y -i "$input" "${trim_args[@]}" -vf "$filter" \
+      "$encoder" -y -i "$input" "${trim_args[@]}" -vf "$filter" \
              -c:v libvpx-vp9 -crf "${MM_WEBM_CRF:-34}" -b:v 0 \
              -deadline good -cpu-used "${MM_WEBM_CPU_USED:-5}" \
              -row-mt 1 -threads 0 -tile-columns "${MM_WEBM_TILE_COLUMNS:-2}" \
@@ -442,16 +447,21 @@ run_youtube_mode() {
   local section_range end_label
   local optional_start
 
+  # With no time arguments, the format immediately follows the source.
+  if is_youtube_type "${2:-}"; then
+    set -- "$1" '0:00' "${@:2}"
+  fi
+
   if (( NO_TEXT )); then
-    [[ $# -ge 3 && $# -le 6 ]] || die "Usage: mememaker.sh --no-text <id> <start> [end] <gif|mp4|webm> [custom-name] [font]"
+    [[ $# -ge 3 && $# -le 6 ]] || die "Usage: mememaker.sh --no-text <id> [start] [end] <gif|mp4|webm> [custom-name] [font]"
     id=$1
-    start=$2
+    start=${2:-0:00}
     if is_youtube_type "${3:-}"; then
       end=""
       type=$3
       optional_start=4
     else
-      [[ $# -ge 4 ]] || die "Usage: mememaker.sh --no-text <id> <start> [end] <gif|mp4|webm> [custom-name] [font]"
+      [[ $# -ge 4 ]] || die "Usage: mememaker.sh --no-text <id> [start] [end] <gif|mp4|webm> [custom-name] [font]"
       end=${3:-}
       type=$4
       optional_start=5
@@ -459,9 +469,9 @@ run_youtube_mode() {
     top=""
     bottom=""
   else
-    [[ $# -ge 5 && $# -le 8 ]] || die "Usage: mememaker.sh <id> <start> [end] <gif|mp4|webm> \"top\" \"bottom\" [custom-name] [font]"
+    [[ $# -ge 5 && $# -le 8 ]] || die "Usage: mememaker.sh <id> [start] [end] <gif|mp4|webm> \"top\" \"bottom\" [custom-name] [font]"
     id=$1
-    start=$2
+    start=${2:-0:00}
     if is_youtube_type "${3:-}"; then
       end=""
       type=$3
@@ -469,7 +479,7 @@ run_youtube_mode() {
       bottom=$5
       optional_start=6
     else
-      [[ $# -ge 6 ]] || die "Usage: mememaker.sh <id> <start> [end] <gif|mp4|webm> \"top\" \"bottom\" [custom-name] [font]"
+      [[ $# -ge 6 ]] || die "Usage: mememaker.sh <id> [start] [end] <gif|mp4|webm> \"top\" \"bottom\" [custom-name] [font]"
       end=${3:-}
       type=$4
       top=$5
@@ -835,7 +845,7 @@ while (($#)); do
       ;;
     --start)
       [[ $# -ge 2 ]] || die "--start requires a value"
-      LOCAL_START="$2"
+      LOCAL_START="${2:-0:00}"
       shift 2
       ;;
     --end)

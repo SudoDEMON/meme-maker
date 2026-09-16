@@ -46,6 +46,7 @@ export class MediaTools {
     if (!formats.includes(draft.format)) draft.format = formats[0];
     const sourceDescription = isCombine ? `${sources.length} clips selected` : source?.name || 'Choose a file or add a link';
     const endHint = source?.info?.duration ? `Full length · ${formatTime(source.info.duration)}` : 'End of media';
+    const customRange = Boolean(draft.end.trim() || (draft.start.trim() && draft.start.trim() !== '0:00'));
     this.panel.innerHTML = `
       <div class="operation-bar" aria-label="Media operation">${Object.entries(operations).filter(([id]) => id !== 'html').map(([id, item]) => `<button type="button" data-operation="${id}" aria-pressed="${state.operation === id}">${item.button}</button>`).join('')}</div>
       <div class="tool-content">
@@ -55,7 +56,7 @@ export class MediaTools {
           ${state.operation === 'audio' ? `<label class="field">New audio<select name="audioId" required><option value="">Choose an audio file from Your media</option>${state.assets.filter(asset => /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i.test(asset.path)).map(asset => `<option value="${h(asset.id)}" ${draft.audioId === asset.id ? 'selected' : ''}>${h(asset.name)}</option>`).join('')}</select></label>` : ''}
           <div class="field-grid">${input('output', 'Output name', draft.output, 'placeholder="Choose a name, or leave automatic"')}<label class="field">Format<select name="format">${formats.map(format => `<option ${draft.format === format ? 'selected' : ''}>${format}</option>`).join('')}</select></label></div>
           ${isHtml ? input('seconds', 'Duration in seconds', draft.seconds, 'type="number" min="0.1" step="0.1" required') + `<label class="field">Audio (optional)<select name="audioId"><option value="">No audio</option>${state.assets.filter(asset => /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i.test(asset.path)).map(asset => `<option value="${h(asset.id)}" ${draft.audioId === asset.id ? 'selected' : ''}>${h(asset.name)}</option>`).join('')}</select></label>` : ''}
-          ${!isCombine && !isHtml ? `<details class="trim-settings" ${draft.start !== '0:00' || draft.end ? 'open' : ''}><summary>Trim ${draft.end || draft.start !== '0:00' ? '· custom range' : '(optional)'}</summary><div class="field-grid">${input('start', 'Start', draft.start, 'placeholder="0:00"')}${input('end', 'End', draft.end, `placeholder="${h(endHint)}"`)}</div></details>` : ''}
+          ${!isCombine && !isHtml ? `<details class="trim-settings" ${customRange ? 'open' : ''}><summary>Trim ${customRange ? '· custom range' : '(optional)'}</summary><div class="field-grid">${input('start', 'Start', draft.start, 'placeholder="Beginning · 0:00"')}${input('end', 'End', draft.end, `placeholder="${h(endHint)}"`)}</div><p class="muted compact-copy">Leave Start blank for the beginning and End blank for the end of the media.</p></details>` : ''}
           <p data-form-error class="error" role="alert"></p>
           <button class="primary-button" type="submit" data-run>${op.button}<span aria-hidden="true"> →</span></button>
         </form>

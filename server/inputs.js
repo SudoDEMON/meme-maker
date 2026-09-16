@@ -111,15 +111,15 @@ function parseTimeValue(value, { allowBlank = false, allowInf = false, label = '
   return total;
 }
 
-function validateTimeRange(fields, { requireStart = true, allowBlankEnd = true } = {}) {
-  const start = requireStart ? required(fields, 'start', 'Start time') : optional(fields, 'start');
+function validateTimeRange(fields) {
+  const start = optional(fields, 'start') || '0:00';
   const end = optional(fields, 'end');
-  const startSeconds = parseTimeValue(start, { allowBlank: !requireStart, label: 'Start time' });
-  const endSeconds = parseTimeValue(end, { allowBlank: allowBlankEnd, allowInf: true, label: 'End time' });
-  if (startSeconds !== null && endSeconds !== null && endSeconds !== Infinity && startSeconds >= endSeconds) {
+  const startSeconds = parseTimeValue(start, { label: 'Start time' });
+  const endSeconds = parseTimeValue(end, { allowBlank: true, allowInf: true, label: 'End time' });
+  if (endSeconds !== null && startSeconds >= endSeconds) {
     throw new Error('Start time must be before end time.');
   }
-  return { start: start || '0:00', end };
+  return { start, end };
 }
 
 function safeStem(value, fallback = 'clip') {

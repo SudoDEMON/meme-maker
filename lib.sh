@@ -28,7 +28,7 @@ if [[ -t 1 ]]; then
   BOLD="$(tput bold 2>/dev/null || printf '\033[1m')"
   RESET="$(tput sgr0 2>/dev/null || printf '\033[0m')"
 else
-  RED= GREEN= YELLOW= BLUE= BOLD= RESET=
+  RED='' GREEN='' YELLOW='' BLUE='' BOLD='' RESET=''
 fi
 
 # ── Logging helpers ──────────────────────────────────────────────────────────
@@ -56,6 +56,27 @@ check_deps() {
   if ((${#missing[@]} > 0)); then
     die "Missing required tools: ${missing[*]}\nInstall them and try again."
   fi
+}
+
+# Homebrew's minimal ffmpeg omits drawtext; ffmpeg-full is installed separately.
+# Keep a working renderer from PATH, and resolve the full build only if needed.
+caption_ffmpeg() {
+  local encoder prefix
+  encoder="$(command -v ffmpeg)" || die "ffmpeg is required for captions."
+  if "$encoder" -hide_banner -filters 2>/dev/null | grep -E '[[:space:]]drawtext[[:space:]]' >/dev/null; then
+    printf '%s\n' "$encoder"
+    return
+  fi
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+    prefix="$(brew --prefix ffmpeg-full 2>/dev/null || true)"
+    if [[ -n "$prefix" && -x "$prefix/bin/ffmpeg" ]] &&
+       "$prefix/bin/ffmpeg" -hide_banner -filters 2>/dev/null | grep -E '[[:space:]]drawtext[[:space:]]' >/dev/null; then
+      printf '%s\n' "$prefix/bin/ffmpeg"
+      return
+    fi
+    die "Caption export needs FFmpeg's drawtext filter. Install it with: brew install ffmpeg-full"
+  fi
+  die "Caption export needs FFmpeg built with the drawtext filter (FreeType and HarfBuzz)."
 }
 
 # yt-dlp can hang on machines with flaky IPv6 routes because Python may try an
@@ -341,7 +362,7 @@ is_zero_time() {
 }
 
 needs_yt_dlp_section() {
-  local start=${1:-}
+  local start=${1:-0:00}
   local end
   end="$(section_end_or_inf "${2:-}")"
 
@@ -349,9 +370,8 @@ needs_yt_dlp_section() {
 }
 
 yt_dlp_section_range() {
-  local start=${1:-}
+  local start=${1:-0:00}
   local end
-  [[ -n "$start" ]] || die "Start time is required."
   end="$(section_end_or_inf "${2:-}")"
   printf '*%s-%s\n' "$start" "$end"
 }

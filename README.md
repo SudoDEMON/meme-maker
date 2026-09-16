@@ -48,6 +48,12 @@ After that you can just run `mememaker`, `meme-convert`, `audio-video`,
 `convert.sh` is linked as `meme-convert` to avoid shadowing ImageMagick's
 common `convert` command.
 
+On macOS, the installer also installs Homebrew's `ffmpeg-full` for caption support.
+If an existing installation reports a missing `drawtext` filter, run
+`brew install ffmpeg-full`. Caption exports automatically use that build when
+the `ffmpeg` on your PATH lacks the filter; no shell PATH changes are needed.
+`npm run doctor` also checks the caption renderer.
+
 ### Local web UI
 
 ```bash
@@ -94,7 +100,10 @@ The editor supports local GIF/MOV/MP4/WebM and remote video. Local files served
 by this app play and seek directly when the browser supports their codec;
 external filesystem paths and remote sources use extracted frame previews.
 Output Start/End accept seconds, `MM:SS`, `HH:MM:SS`, or frame values such as
-`18f`. End is optional. Arrow keys move a focused caption or crop handle;
+`18f`. Start and End are optional throughout the editor and Media Tools: a blank
+Start means the beginning, and a blank End means the end of the source. Preview
+scrubbing does not change the export range. Explicit trim values survive
+inspection, navigation, and refresh. Arrow keys move a focused caption or crop handle;
 hold Shift for larger steps.
 
 The editor stores positions and font sizes in source pixels. Its renderer draws
@@ -162,7 +171,7 @@ sudo pacman -S yt-dlp ffmpeg ttf-dejavu noto-fonts nodejs npm
 
 On **macOS** (with Homebrew):
 ```bash
-brew install yt-dlp ffmpeg node
+brew install yt-dlp ffmpeg ffmpeg-full node
 ```
 
 ## Usage examples
@@ -238,7 +247,7 @@ brew install yt-dlp ffmpeg node
 - `audio_video.sh` is the general add-audio entrypoint for local/remote media plus a local audio file.
 - `combine_videos.sh` appends two or more local clips. Matching streams use a fast lossless copy; differing resolution, frame rate, codec, or audio layout triggers a normalized re-encode.
 - Caption text can be blank: use `"" ""` or `--no-text`. In the interactive menu, leave text prompts blank for no text.
-- End time can be blank/omitted to use everything from the start time through the end of the video. Internally this uses yt-dlp's `inf` section end when a section is still needed.
+- Start and End can be blank/omitted: Start defaults to `0:00`, and End defaults to the end of the media. For the CLI, omit both times to use the full source (for example, `./convert.sh input.mp4 webm output.webm`); one time argument is the Start. Internally this uses yt-dlp's `inf` section end when a section is still needed.
 - `--top-y`, `--bottom-y`, `--font-size`, `--width`, and `--fps` control caption placement and output sizing.
 - `--top-x`, `--bottom-x`, `--bottom-from-top`, `--crop`, `--font-family`, `--bold`, `--italic`, `--underline`, and `--strikethrough` are available for the visual editor and advanced caption placement.
 - `--top-font-family`, `--top-font-size`, `--top-bold`, `--top-italic`, `--bottom-font-family`, `--bottom-font-size`, `--bottom-bold`, and `--bottom-italic` control the two caption lines independently.

@@ -2,7 +2,7 @@
   "name": "meme-maker",
   "version": "1.0.2",
   "scripts": {
-    "test": "./test.sh && node --test tests/server.test.cjs tests/job-progress.test.cjs",
+    "test": "./test.sh && node --test tests/server.test.cjs tests/job-progress.test.cjs tests/inputs.test.cjs",
     "web": "node web.js",
     "build": "./build.sh",
     "convert": "./convert.sh",
@@ -13,7 +13,7 @@
     "install:linux": "./install-linux.sh",
     "install:macos": "./install-macos.sh",
     "install:windows": "powershell -ExecutionPolicy Bypass -File ./install-windows.ps1",
-    "test:web": "node --test tests/browser.test.cjs",
+    "test:web": "node --test tests/browser.test.cjs tests/export.test.cjs",
     "check": "npm test && npm run test:web"
   },
   "description": "yt-dlp + ffmpeg toolkit for fast YouTube clips, music stings, and captioned memes/GIFs. Personal but portable.",

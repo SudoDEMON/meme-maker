@@ -8,6 +8,20 @@ const { fixture, waitFor, brightBounds } = require('./helpers.cjs');
 test('media server regressions', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
   const f = await fixture();
   t.after(() => f.close());
+  await t.test('omitted boundaries preserve full exports and zero-length editor ranges are rejected', async () => {
+    for (const [action, fields] of [
+      ['download-convert', { source:f.input, format:'mp4' }],
+      ['text-to-media', { source:f.input, format:'webm', topText:'FULL CLIP', width:'320' }],
+      ['audio-to-video', { source:f.input, audio:f.input, format:'mp4' }],
+      ['meme-editor', { input:f.input, format:'webm', width:'320', topText:'FULL CLIP' }]
+    ]) {
+      const job = await f.job(action, { ...fields, output:`default-${action}` });
+      const metadata = await f.post('/api/source-info', { source:job.outputPath });
+      assert.ok(metadata.duration >= 1.9 && metadata.duration < 2.2, `${action}: ${metadata.duration}`);
+    }
+    await assert.rejects(f.post('/api/jobs', { action:'meme-editor', fields:{ input:f.input, outputEnd:'0' } }), /before/);
+    await assert.rejects(f.post('/api/jobs', { action:'download-convert', fields:{ source:f.input, end:'0' } }), /before/);
+  });
   await t.test('resize and crop preserve the visible caption position', async () => {
     const fields = { input:f.input, topText:'HELLO', bottomText:'', topX:'960', topY:'400', bottomX:'0', bottomY:'0', fontSize:'48', width:'640', format:'mp4', output:'resized' };
     const resized = await f.job('meme-editor', fields);

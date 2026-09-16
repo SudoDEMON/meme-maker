@@ -44,16 +44,19 @@ export class MemeEditor {
     const e = state.editor;
     const info = assetById(e.sourceId)?.info;
     const fps = info?.fps || 10;
-    const max = Math.max(0, (info?.duration || 0) - 1 / fps);
+    const maxFrame = Math.max(0, (info?.frameCount || Math.round((info?.duration || 0) * fps)) - 1);
+    const max = maxFrame / fps;
     e.time = Math.max(0, Math.min(max, Number(e.time) || 0));
     const slider = this.panel.querySelector('#previewTime');
     if (slider) {
-      slider.disabled = !info?.duration; slider.max = String(max); slider.step = String(1 / fps); slider.value = String(e.time);
+      // Use whole frames: fractional seconds can fail native step/max validation
+      // after the browser rounds a repeating interval such as 1/30 second.
+      slider.disabled = !info?.duration; slider.max = String(maxFrame); slider.value = String(Math.round(e.time * fps));
     }
     const label = this.panel.querySelector('#previewTimeLabel');
     if (label) label.textContent = `${formatTime(e.time)} / ${formatTime(info?.duration)}`;
     const frame = this.panel.querySelector('#previewFrame');
-    if (frame) { frame.value = String(Math.round(e.time * fps)); frame.max = String(Math.floor(max * fps)); }
+    if (frame) { frame.value = String(Math.round(e.time * fps)); frame.max = String(maxFrame); }
     persist();
   }
   async loadPreview() {
@@ -141,8 +144,7 @@ export class MemeEditor {
   }
   input(event) {
     const el = event.target;
-    if (el.id === 'previewTime') { this.seek(Number(el.value)); return; }
-    if (el.id === 'previewFrame') {
+    if (el.id === 'previewTime' || el.id === 'previewFrame') {
       this.seek(Number(el.value) / (assetById(state.editor.sourceId)?.info?.fps || 10));
       return;
     }

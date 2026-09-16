@@ -63,7 +63,7 @@ case "$ext" in
   *) die "Unsupported output format: .$ext (use .mp4, .webm, .gif, or .png)" ;;
 esac
 
-FRAME_DIR="$(make_temp_dir)"
+FRAME_DIR="$(make_temp_dir --ext frames)"
 
 # 1) capture PNG frames ------------------------------------------------------
 info "Capturing frames from $HTML for ${SECS}s at ${FPS}fps..."

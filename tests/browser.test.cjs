@@ -145,9 +145,9 @@ test('two-section browser workflows', {skip:process.platform === 'win32' ? 'Inte
       };
       window.restoreFetch=()=>{window.fetch=original;};
     });
-    await fill(page,'#previewTime','0.2');
+    await fill(page,'#previewTime','2');
     await page.waitForFunction(()=>typeof window.releaseOldFrame==='function');
-    await fill(page,'#previewTime','0.7');
+    await fill(page,'#previewTime','7');
     await page.waitForFunction(()=>window.newFrameReceived && document.querySelector('#previewStatus').textContent.includes('Frame preview ready'));
     const latestImage=await page.$eval('#editorPreview',el=>el.src);
     await page.evaluate(async()=>{
@@ -155,7 +155,7 @@ test('two-section browser workflows', {skip:process.platform === 'win32' ? 'Inte
       // Wait for queued promise continuations, without timing the network.
       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     });
-    assert.equal(await page.$eval('#previewTime',el=>el.value),'0.7');
+    assert.equal(await page.$eval('#previewTime',el=>el.value),'7');
     assert.equal(await page.$eval('#editorPreview',el=>el.src),latestImage);
   });
   await t.test('a disconnected event stream keeps Run locked and the real job cancellable',async()=>{

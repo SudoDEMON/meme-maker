@@ -3,20 +3,21 @@
 # Combine a local or yt-dlp-supported video source with a local audio file.
 #
 # Usage:
-#   ./audio_video.sh <source-file-or-url-or-youtube-id> <start> [end] <audio-file> <output.(mp4|webm)>
+#   ./audio_video.sh <source-file-or-url-or-youtube-id> [start] [end] <audio-file> <output.(mp4|webm)>
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 show_audio_video_help() {
   cat <<'EOF'
 Usage:
-  ./audio_video.sh <source-file-or-url-or-youtube-id> <start> [end] <audio-file> <output.(mp4|webm)>
+  ./audio_video.sh <source-file-or-url-or-youtube-id> [start] [end] <audio-file> <output.(mp4|webm)>
 
 Examples:
   ./audio_video.sh O0Dgtar0zB4 0:00 0:20 Audio/sting.mp3 videos/clip-with-audio.mp4
   ./audio_video.sh videos/input.mp4 0:05 "" Audio/sting.mp3 videos/input-with-audio.webm
 
-Leave end blank to use everything from the start time through the end.
+Leave Start blank/omitted for the beginning and End blank/omitted for the end.
+Omit both times to use the full source; a single time argument is Start.
 Requires: yt-dlp for remote sources, ffmpeg and ffprobe.
 EOF
 }
@@ -154,15 +155,21 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-if [[ $# -eq 4 ]]; then
+if [[ $# -eq 3 ]]; then
   SOURCE_ARG=$1
-  START=$2
+  START='0:00'
+  END=''
+  AUDIO=$2
+  OUT=$3
+elif [[ $# -eq 4 ]]; then
+  SOURCE_ARG=$1
+  START=${2:-0:00}
   END=""
   AUDIO=$3
   OUT=$4
 elif [[ $# -eq 5 ]]; then
   SOURCE_ARG=$1
-  START=$2
+  START=${2:-0:00}
   END=${3:-}
   AUDIO=$4
   OUT=$5

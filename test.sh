@@ -146,6 +146,10 @@ chmod +x "$stub_bin/yt-dlp"
 cat >"$stub_bin/ffmpeg" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "$*" == '-hide_banner -filters' ]]; then
+  printf ' T.C drawtext V->V Draw text on video.\n'
+  exit 0
+fi
 if [[ -n "${MM_TEST_FFMPEG_LOG:-}" ]]; then
   printf '%s\n' "$*" >>"$MM_TEST_FFMPEG_LOG"
 fi
@@ -171,6 +175,23 @@ grep -q 'crop=30:40:10:20,scale=30:-2:flags=lanczos' "$tmp_dir/ffmpeg.log"
 MM_TEST_FFMPEG_LOG="$tmp_dir/blank-text.log" PATH="$stub_bin:$PATH" ./mememaker.sh --caption-local --width 30 "$tmp_dir/input.mp4" "$tmp_dir/blank-text.mp4" "" "" >/dev/null
 if grep -q 'drawtext=' "$tmp_dir/blank-text.log"; then
   echo "Expected blank captions to render without drawtext filters"
+  exit 1
+fi
+
+# Blank/omitted boundaries mean the full source in every CLI entry point too.
+bash -c 'source ./lib.sh; [[ "$(yt_dlp_section_range "" "")" == "*0:00-inf" ]]; ! needs_yt_dlp_section "" ""'
+for time_mode in blank omitted; do
+  time_args=()
+  [[ "$time_mode" != blank ]] || time_args=("" "")
+  for source in "$tmp_dir/input.mp4" https://example.test/video; do
+    MM_TEST_YTDLP_LOG="$tmp_dir/default-times-download.log" MM_TEST_FFMPEG_LOG="$tmp_dir/default-times-encode.log" PATH="$stub_bin:$PATH" ./convert.sh "$source" "${time_args[@]}" mp4 "$tmp_dir/full-convert.mp4" >/dev/null
+    MM_TEST_YTDLP_LOG="$tmp_dir/default-times-download.log" MM_TEST_FFMPEG_LOG="$tmp_dir/default-times-encode.log" PATH="$stub_bin:$PATH" ./audio_video.sh "$source" "${time_args[@]}" "$tmp_dir/input.mp4" "$tmp_dir/full-audio.mp4" >/dev/null
+  done
+  (cd "$tmp_dir" && MM_TEST_YTDLP_LOG="$tmp_dir/default-times-download.log" MM_TEST_FFMPEG_LOG="$tmp_dir/default-times-encode.log" PATH="$stub_bin:$PATH" "$REPO_ROOT/mememaker.sh" https://example.test/video "${time_args[@]}" webm TOP BOTTOM "test-default-$time_mode" >/dev/null)
+done
+MM_TEST_FFMPEG_LOG="$tmp_dir/default-times-encode.log" PATH="$stub_bin:$PATH" ./mememaker.sh --caption-local --start "" --end "" "$tmp_dir/input.mp4" "$tmp_dir/full-caption.webm" TOP BOTTOM >/dev/null
+if grep -q -- '--download-sections' "$tmp_dir/default-times-download.log" || grep -Eq -- '(^| )-(ss|to) ' "$tmp_dir/default-times-encode.log"; then
+  echo "Expected blank/omitted boundaries to skip trimming"
   exit 1
 fi
 

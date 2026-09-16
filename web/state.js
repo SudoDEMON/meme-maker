@@ -23,7 +23,7 @@ export function persist() {
 export const assetById = id => state.assets.find(asset => asset.id === id);
 export const isVideo = asset => Boolean(asset && (/\.(gif|mov|mp4|webm)$/i.test(asset.path) || /^https?:\/\//i.test(asset.path) || /^[\w-]{11}$/.test(asset.path)));
 export function draftFor(operation) {
-  return state.drafts[operation] ||= { start: '0:00', end: '', format: operation === 'extract' ? 'mp3' : 'mp4', output: '', audioId: '', seconds: '5' };
+  return state.drafts[operation] ||= { start: '', end: '', format: operation === 'extract' ? 'mp3' : 'mp4', output: '', audioId: '', seconds: '5' };
 }
 export function editAsset(asset) {
   if (state.editor.sourceId !== asset.id) state.editor = { ...editorDefaults(), sourceId: asset.id };

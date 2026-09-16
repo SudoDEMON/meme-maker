@@ -109,7 +109,7 @@ async function buildJob(action, fields) {
       const outputEnd = parseFrameBoundary(optional(data, 'outputEnd'), metadata, { label: 'Output End' });
       const fontFamily = optional(data, 'fontFamily');
       const font = optional(data, 'fontPath');
-      if (outputStart && outputEnd && outputStart.seconds >= outputEnd.seconds) {
+      if (outputEnd && (outputStart?.seconds ?? 0) >= outputEnd.seconds) {
         throw new Error('Output Start must be before Output End.');
       }
 
