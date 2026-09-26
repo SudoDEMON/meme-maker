@@ -321,3 +321,10 @@ ISC (same as the original package.json)
 ---
 
 Made with too much yt-dlp and stubbornness.
+
+## Local CI migration
+
+The `.forgejo/workflows/` checks run on the isolated Linux worker with one job
+at a time. GitHub workflows stay available until the matching Forgejo checks
+pass; GitHub remains the issue, pull-request and release archive. Build jobs
+do not receive production deployment credentials.
