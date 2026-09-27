@@ -6,6 +6,10 @@ Originally created while making memes for a personal project that spiraled into 
 
 Now reasonably robust, portable, and easy to install on new machines, especially Arch-based Linux systems.
 
+HTML capture keeps Chromium's sandbox enabled and uses a pipe for browser control.
+If the operating system cannot provide a browser sandbox, fix that environment
+before rendering untrusted HTML; do not disable the sandbox as a workaround.
+
 ## What's in here
 
 | Script          | Purpose                              | Notes |

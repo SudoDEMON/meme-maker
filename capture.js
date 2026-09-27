@@ -44,8 +44,8 @@ const isDebug = process.env.MM_DEBUG === '1';
 
     const launchOptions = {
       headless: process.env.PUPPETEER_HEADLESS !== 'false',
-      defaultViewport: { width: WIDTH, height: HEIGHT },
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      pipe: true,
+      defaultViewport: { width: WIDTH, height: HEIGHT }
     };
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
       launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
