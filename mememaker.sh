@@ -178,7 +178,9 @@ is_youtube_type() {
 append_filter() {
   local base=$1
   local extra=$2
-  if [[ -n "$extra" ]]; then
+  if [[ -z "$base" ]]; then
+    printf '%s\n' "$extra"
+  elif [[ -n "$extra" ]]; then
     printf '%s,%s\n' "$base" "$extra"
   else
     printf '%s\n' "$base"
