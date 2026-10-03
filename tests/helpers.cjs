@@ -15,13 +15,15 @@ async function waitFor(check, label, timeout = 15000) {
   }
   throw new Error(`Timed out: ${label}`);
 }
-async function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meme-web-test-'));
+async function fixture({ fps = 10, duration = 2 } = {}) {
+  // Node resolves module paths through /private on macOS; use the same spelling
+  // for fixture inputs so source files remain inside the server's project root.
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'meme-web-test-')));
   for (const name of ['web.js','server','web','mememaker.sh','convert.sh','combine_videos.sh','audio_video.sh','build.sh','capture.js','lib.sh']) {
     fs.cpSync(path.join(repo, name), path.join(root, name), { recursive: true });
   }
   const input = path.join(root, 'input.mp4');
-  execFileSync('ffmpeg', ['-v','error','-f','lavfi','-i','color=c=black:s=1280x720:r=10:d=2','-f','lavfi','-i','sine=frequency=440:duration=2','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',input]);
+  execFileSync('ffmpeg', ['-v','error','-f','lavfi','-i',`color=c=black:s=1280x720:r=${fps}:d=${duration}`,'-f','lavfi','-i',`sine=frequency=440:duration=${duration}`,'-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',input]);
   const bin = path.join(root, 'bin');
   fs.mkdirSync(bin);
   const marker = path.join(root, 'probe-started');
@@ -33,7 +35,7 @@ const args = process.argv.slice(2);
 const source = args.at(-1);
 if (args.includes('--dump-single-json')) {
   fs.appendFileSync(${JSON.stringify(probeLog)}, source+'\\n');
-  const print = () => console.log(JSON.stringify({id:'fixture',title:'Remote fixture',width:1280,height:720,fps:10,duration:2}));
+  const print = () => console.log(JSON.stringify({id:'fixture',title:'Remote fixture',width:1280,height:720,fps:${fps},duration:${duration}}));
   if (source.includes('slow')) {
     fs.writeFileSync(${JSON.stringify(marker)}, String(process.pid));
     setTimeout(print, 900);

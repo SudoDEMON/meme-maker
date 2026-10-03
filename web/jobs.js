@@ -1,5 +1,6 @@
 import { state, persist, escapeHtml as h } from './state.js';
 import { post } from './api.js';
+import { JobTiming } from './job-timing.js';
 
 export class JobClient {
   constructor(onResult, onEdit) {
@@ -7,9 +8,10 @@ export class JobClient {
     this.onEdit = onEdit;
     this.busy = false;
     this.log = document.querySelector('#jobLog');
+    this.timing = new JobTiming();
     document.querySelector('#cancelButton').addEventListener('click', () => this.cancel());
     document.querySelector('#editOutputButton').addEventListener('click', () => { if (this.result) this.onEdit(this.result); });
-    if (state.jobId) { this.setBusy(true); this.connect(state.jobId); this.poll(state.jobId); }
+    if (state.jobId) { this.timing.start(state.jobStartedAt); this.setBusy(true); this.connect(state.jobId); this.poll(state.jobId); }
     else if (state.lastResult) this.showResult(state.lastResult);
   }
   setBusy(busy) {
@@ -32,6 +34,7 @@ export class JobClient {
   async run(action, fields) {
     if (this.busy) return;
     this.close();
+    this.timing.start(new Date().toISOString());
     this.setBusy(true);
     this.log.textContent = '';
     this.result = null;
@@ -42,6 +45,8 @@ export class JobClient {
     try {
       const job = await post('/api/jobs', { action, fields });
       state.jobId = job.id;
+      state.jobStartedAt = job.startedAt || new Date(this.timing.startedAt).toISOString();
+      this.timing.sync(job);
       state.lastResult = null;
       persist();
       this.setBusy(true);
@@ -50,6 +55,7 @@ export class JobClient {
       this.message('Could not start', err.message);
       this.append(`${err.message}\n`);
       this.setBusy(false);
+      this.timing.finish();
     }
   }
   connect(id) {
@@ -61,15 +67,19 @@ export class JobClient {
     events.addEventListener('status', event => {
       if (!current()) return;
       const data = JSON.parse(event.data);
+      this.timing.sync(data);
       this.message('Processing…', 'You can keep editing while this finishes.');
       if (data.command) this.append(`$ ${data.command}\n`);
     });
     events.addEventListener('log', event => { if (current()) this.append(JSON.parse(event.data).text || ''); });
+    events.addEventListener('progress', event => { if (current()) this.timing.setProgress(JSON.parse(event.data)); });
+    events.addEventListener('snapshot', event => { if (current()) this.timing.sync(JSON.parse(event.data)); });
     events.addEventListener('done', event => { if (current()) this.finish(JSON.parse(event.data)); });
     events.onerror = () => {
       if (!current()) return;
       // A broken connection is not a finished job. Keep Run disabled and Cancel available.
       this.message('Reconnecting…', 'The job may still be running. Checking its status.');
+      this.timing.disconnect();
       this.schedulePoll(id);
     };
   }
@@ -86,6 +96,7 @@ export class JobClient {
       if (!response.ok) throw new Error('Status unavailable');
       const job = await response.json();
       if (state.jobId !== id) return;
+      this.timing.sync(job);
       if (job.status !== 'running') { this.finish(job); return; }
     } catch { /* Keep the running job accessible while the connection recovers. */ }
     this.schedulePoll(id);
@@ -94,6 +105,9 @@ export class JobClient {
     this.close();
     state.jobId = null;
     this.setBusy(false);
+    job = { ...job, startedAt: job.startedAt || state.jobStartedAt, finishedAt: job.finishedAt || new Date().toISOString() };
+    state.jobStartedAt = null;
+    this.timing.finish(job);
     this.append(`\n[${job.status}]\n`);
     if (job.status === 'complete') {
       state.lastResult = job;
@@ -106,6 +120,7 @@ export class JobClient {
     persist();
   }
   showResult(job) {
+    if (!this.busy) this.timing.finish(job);
     this.result = job;
     const name = job.outputPath?.split('/').pop() || 'output';
     this.message('Ready to save', name);

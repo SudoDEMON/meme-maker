@@ -3,7 +3,7 @@
 # Download or convert a source into GIF, MP3, MP4, or WebM.
 #
 # Usage:
-#   ./convert.sh <source-file-or-yt-dlp-url-or-youtube-id> <start> [end] <gif|mp3|mp4|webm> <output>
+#   ./convert.sh <source-file-or-yt-dlp-url-or-youtube-id> [start] [end] <gif|mp3|mp4|webm> <output>
 #
 # Source can be a local media file, a YouTube ID, a YouTube URL, or another URL
 # supported by the installed yt-dlp.
@@ -13,14 +13,15 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 show_convert_help() {
   cat <<'EOF'
 Usage:
-  ./convert.sh <source-file-or-url-or-youtube-id> <start> [end] <gif|mp3|mp4|webm> <output>
+  ./convert.sh <source-file-or-url-or-youtube-id> [start] [end] <gif|mp3|mp4|webm> <output>
 
 Examples:
   ./convert.sh O0Dgtar0zB4 0:00 0:20 mp4 videos/clip.mp4
   ./convert.sh https://youtu.be/O0Dgtar0zB4 0:00 "" gif gifs/clip.gif
   ./convert.sh videos/input.mp4 0:05 0:10 webm videos/input-cut.webm
 
-Leave end blank to use everything from the start time through the end.
+Leave Start blank/omitted for the beginning and End blank/omitted for the end.
+Omit both times to use the full source; a single time argument is Start.
 Requires: ffmpeg, and yt-dlp for remote sources.
 EOF
 }
@@ -63,10 +64,10 @@ section_retry_is_short() {
   local end=$2
   local max_seconds=${MM_YTDLP_SECTION_RETRY_MAX_SECONDS:-600}
 
-  looks_like_time "$start" || return 0
-  looks_like_time "$end" || return 0
-  [[ "${end,,}" != "inf" ]] || return 0
-  [[ "$max_seconds" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 0
+  looks_like_time "$start" || return 1
+  looks_like_time "$end" || return 1
+  [[ "${start,,}" != "inf" && "${end,,}" != "inf" ]] || return 1
+  [[ "$max_seconds" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
 
   awk -v start="$start" -v end="$end" -v max="$max_seconds" '
     function seconds(value, parts, count) {
@@ -244,15 +245,21 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-if [[ $# -eq 4 ]]; then
+if [[ $# -eq 3 ]]; then
   SOURCE_ARG=$1
-  START=$2
+  START='0:00'
+  END=''
+  TYPE=$2
+  OUT=$3
+elif [[ $# -eq 4 ]]; then
+  SOURCE_ARG=$1
+  START=${2:-0:00}
   END=""
   TYPE=$3
   OUT=$4
 elif [[ $# -eq 5 ]]; then
   SOURCE_ARG=$1
-  START=$2
+  START=${2:-0:00}
   END=${3:-}
   TYPE=$4
   OUT=$5

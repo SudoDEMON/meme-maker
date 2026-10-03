@@ -9,6 +9,32 @@ const { fixture, waitFor, brightBounds } = require('./helpers.cjs');
 test('media server regressions', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
   const f = await fixture();
   t.after(() => f.close());
+  await t.test('remote caption export downloads, prepares, and encodes distinct temporary files', async () => {
+    const job = await f.job('meme-editor', {
+      input:'https://example.test/remote.mp4', format:'webm', output:'remote-caption',
+      topText:'REMOTE WEBM', fontSize:'64', width:'320', outputStart:'', outputEnd:''
+    });
+    assert.ok(brightBounds(path.join(f.root, job.outputPath), 320).count > 100, 'remote export contains its caption');
+    const metadata = await f.post('/api/source-info', { source:job.outputPath });
+    assert.ok(metadata.duration >= 1.9 && metadata.duration < 2.2);
+    const download = await fetch(f.url + job.downloadUrl);
+    assert.equal(download.status, 200);
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), fs.readFileSync(path.join(f.root, job.outputPath)));
+  });
+  await t.test('omitted boundaries preserve full exports and zero-length editor ranges are rejected', async () => {
+    for (const [action, fields] of [
+      ['download-convert', { source:f.input, format:'mp4' }],
+      ['text-to-media', { source:f.input, format:'webm', topText:'FULL CLIP', width:'320' }],
+      ['audio-to-video', { source:f.input, audio:f.input, format:'mp4' }],
+      ['meme-editor', { input:f.input, format:'webm', width:'320', topText:'FULL CLIP' }]
+    ]) {
+      const job = await f.job(action, { ...fields, output:`default-${action}` });
+      const metadata = await f.post('/api/source-info', { source:job.outputPath });
+      assert.ok(metadata.duration >= 1.9 && metadata.duration < 2.2, `${action}: ${metadata.duration}`);
+    }
+    await assert.rejects(f.post('/api/jobs', { action:'meme-editor', fields:{ input:f.input, outputEnd:'0' } }), /before/);
+    await assert.rejects(f.post('/api/jobs', { action:'download-convert', fields:{ source:f.input, end:'0' } }), /before/);
+  });
   await t.test('resize and crop preserve the visible caption position', async () => {
     const fields = { input:f.input, topText:'HELLO', bottomText:'', topX:'960', topY:'400', bottomX:'0', bottomY:'0', fontSize:'48', width:'640', format:'mp4', output:'resized' };
     const resized = await f.job('meme-editor', fields);
@@ -79,4 +105,55 @@ test('media server regressions', {skip:process.platform === 'win32' ? 'Integrati
     await cancelled;
     await waitFor(()=>{try{process.kill(pid,0);return false;}catch{return true;}},'preview child exit');
   });
+});
+
+test('job timing and step progress survive status requests and event reconnection', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async () => {
+  const f = await fixture();
+  let active;
+  try {
+    const completed = await f.job('download-convert', { source:f.input, start:'0', end:'1', format:'mp4', output:'timing-complete' });
+    assert.ok(Date.parse(completed.finishedAt) >= Date.parse(completed.startedAt));
+    assert.deepEqual(completed.progress.steps.map(step => step.status), ['complete']);
+
+    fs.writeFileSync(path.join(f.root, 'convert.sh'), `#!/usr/bin/env bash
+trap 'exit 143' TERM INT
+printf "Input #0, mov, from 'input.mp4':\\n  Duration: 00:00:02.00, start: 0.000000\\nOutput #0, webm, to 'videos/timed.webm':\\nframe=5 time=00:00:00.50 speed=0.25x\\r" >&2
+sleep 30
+`);
+    active = await f.post('/api/jobs', { action:'download-convert', fields:{ source:f.input, start:'0', end:'1', format:'webm', output:'timed' } });
+    assert.ok(Number.isFinite(Date.parse(active.startedAt)));
+    const current = await waitFor(async () => {
+      const job = await (await fetch(`${f.url}/api/jobs/${active.id}`)).json();
+      return job.progress?.remainingSeconds === 2 ? job : null;
+    }, 'render estimate');
+    assert.equal(current.progress.percent, 50);
+    assert.equal(current.progress.steps[0].status, 'running');
+    const response = await fetch(`${f.url}/api/jobs/${active.id}/events`);
+    const reader = response.body.getReader();
+    let events = '';
+    try {
+      while (!events.includes('event: snapshot\n')) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        events += new TextDecoder().decode(value);
+      }
+    } finally { await reader.cancel(); }
+    const snapshot = JSON.parse(events.match(/event: snapshot\ndata: (.*)\n/)[1]);
+    assert.equal(snapshot.startedAt, active.startedAt);
+    assert.equal(snapshot.progress.remainingSeconds, 2);
+    await f.post(`/api/jobs/${active.id}/cancel`, {});
+    const cancelled = await waitFor(async () => {
+      const job = await (await fetch(`${f.url}/api/jobs/${active.id}`)).json();
+      return job.status === 'cancelled' ? job : null;
+    }, 'cancelled timing job');
+    assert.deepEqual(cancelled.progress.steps.map(step => step.status), ['cancelled']);
+    assert.ok(Date.parse(cancelled.finishedAt) >= Date.parse(cancelled.startedAt));
+    active = null;
+  } finally {
+    if (active) {
+      await f.post(`/api/jobs/${active.id}/cancel`, {});
+      await waitFor(async () => (await (await fetch(`${f.url}/api/jobs/${active.id}`)).json()).status !== 'running', 'test process cleanup');
+    }
+    await f.close();
+  }
 });

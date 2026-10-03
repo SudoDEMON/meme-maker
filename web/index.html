@@ -38,7 +38,12 @@
         <section class="panel result-panel" aria-labelledby="resultTitle">
           <div class="panel-head"><div><p class="eyebrow">OUTPUT</p><h2 id="resultTitle">Ready when you are</h2></div><button type="button" id="cancelButton" class="secondary-button" hidden>Cancel</button></div>
           <p id="jobMessage" role="status">Your finished media will appear here.</p>
-          <progress id="jobProgress" aria-label="Processing media" hidden></progress>
+          <div id="jobTiming" class="job-timing" hidden>
+            <dl class="job-times"><div><dt>Elapsed Time:</dt><dd id="jobElapsed">0:00</dd></div><div id="jobEstimateRow"><dt>Estimated Time Left:</dt><dd id="jobEstimate">Estimating…</dd></div></dl>
+            <p id="jobEstimateHint" class="muted">Estimate is for the current step and updates as it runs.</p>
+            <ol id="jobSteps" class="job-steps" aria-label="Processing steps" hidden></ol>
+          </div>
+          <progress id="jobProgress" max="100" aria-label="Processing media" hidden></progress>
           <div id="resultPreview" class="result-preview"></div>
           <div id="outputActions" class="button-row" hidden>
             <a id="downloadLink" class="primary-button">Download</a>

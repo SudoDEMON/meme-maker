@@ -172,6 +172,9 @@ list.addEventListener('change', event => {
   changed();
 });
 list.addEventListener('click', event => {
+  // Keep selection inputs attached until their change event reaches the list.
+  // Rebuilding here interrupts radio/checkbox changes and label activation.
+  if (!event.target.closest('[data-edit], [data-move], [data-remove]')) return;
   const edit = event.target.closest('[data-edit]');
   if (edit) openEditor(assetById(edit.dataset.edit));
   const move = event.target.closest('[data-move]');

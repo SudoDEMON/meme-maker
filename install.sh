@@ -37,7 +37,7 @@ if [[ -t 1 ]]; then
   BOLD="$(tput bold 2>/dev/null || echo '')"
   RESET="$(tput sgr0 2>/dev/null || echo '')"
 else
-  GREEN= YELLOW= BLUE= BOLD= RESET=
+  GREEN='' YELLOW='' BLUE='' BOLD='' RESET=''
 fi
 
 info()  { echo "${BLUE}→${RESET} $*"; }
@@ -164,6 +164,7 @@ install_deps() {
   [[ -n "$FONT_PKG" ]] && read -r -a font_deps <<< "$FONT_PKG"
 
   if [[ "$PKG_MANAGER" == "brew" ]]; then
+    deps=(yt-dlp ffmpeg ffmpeg-full)
     info "Installing via Homebrew: ${deps[*]}"
     install_packages "${deps[@]}"
     install_packages node || warn "Node.js install failed; build.sh will need Node.js installed manually"
@@ -452,6 +453,14 @@ NODE
   if [[ -f "$REPO_ROOT/lib.sh" ]]; then
     # shellcheck disable=SC1091
     source "$REPO_ROOT/lib.sh" 2>/dev/null || true
+
+    local caption_encoder
+    if caption_encoder=$(caption_ffmpeg); then
+      success "Caption renderer: $caption_encoder (drawtext available)"
+    else
+      warn "Caption rendering is unavailable."
+      issues=$((issues + 1))
+    fi
 
     if declare -f detect_font >/dev/null 2>&1; then
       local font_path

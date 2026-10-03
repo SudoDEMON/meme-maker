@@ -1,0 +1,25 @@
+name: Media checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: linux-cpu
+    timeout-minutes: 20
+    steps:
+      - uses: https://github.com/actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: https://github.com/actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install media test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fontconfig fonts-dejavu-core libasound2t64 libatk-bridge2.0-0 libatk1.0-0 libcups2 libgbm1 libgtk-3-0 libnss3 libxcomposite1 libxdamage1 libxrandr2
+      - run: npm ci
+      - run: npm run check

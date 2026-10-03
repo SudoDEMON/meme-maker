@@ -24,8 +24,9 @@ export function editorView() {
         </div></div>
         <p id="previewStatus" class="status-message" role="status"></p>
         <div class="preview-toolbar"><button type="button" data-editor-action="play" class="secondary-button" disabled>Play</button><span id="previewTimeLabel">0:00 / ${formatTime(source?.info?.duration)}</span><button type="button" class="text-button" data-editor-action="retry">Reload preview</button></div>
-        <label class="scrub-label"><span class="sr-only">Preview time</span><input id="previewTime" type="range" min="0" max="0" value="0" step="0.01" disabled></label>
-        <div class="trim-row"><div>${field('outputStart', 'Start', 'placeholder="0:00 or 0f"')}<button type="button" data-editor-action="set-start" class="text-button">Use current frame</button></div><div>${field('outputEnd', 'End', `placeholder="${source?.info?.duration ? h(formatTime(source.info.duration)) : 'End of media'}"`)}<button type="button" data-editor-action="set-end" class="text-button">Use current frame</button></div></div>
+        <label class="scrub-label"><span class="sr-only">Preview frame</span><input id="previewTime" type="range" min="0" max="0" value="0" step="1" disabled></label>
+        <div class="trim-row"><div>${field('outputStart', 'Start', 'placeholder="Beginning · 0:00"')}<button type="button" data-editor-action="set-start" class="text-button">Use current frame</button></div><div>${field('outputEnd', 'End', `placeholder="${source?.info?.duration ? `Full length · ${h(formatTime(source.info.duration))}` : 'End of media'}"`)}<button type="button" data-editor-action="set-end" class="text-button">Use current frame</button></div></div>
+        <p class="muted compact-copy">Leave Start blank for the beginning and End blank for the end of the media.</p>
         <p class="muted compact-copy">Drag captions to position them. Drag the blue edges to crop.</p>
       </div>
       <div class="editor-controls">
@@ -36,7 +37,7 @@ export function editorView() {
         <div class="style-toggles">${[['bold','B','Bold'],['italic','I','Italic'],['underline','U','Underline'],['strike','S','Strikethrough']].map(([name,label,title]) => `<label title="${title}" class="style-toggle"><input type="checkbox" name="${name}" ${e[name] ? 'checked' : ''}><span aria-hidden="true">${label}</span><span class="sr-only">${title}</span></label>`).join('')}</div>
         <div class="control-heading"><h3>Crop</h3><button type="button" class="text-button" data-editor-action="crop-reset">Full frame</button></div><p class="muted" id="cropSummary">Full frame</p>
         <details id="editorAdvanced"><summary>Advanced settings</summary>
-          <div class="field-grid">${field('outputFps','Output FPS','type="number" min="0.1" step="0.1" placeholder="Auto"')}<label class="field">Preview frame<input id="previewFrame" type="number" min="0" step="1" value="0"></label></div>
+          <div class="field-grid">${field('outputFps','Output FPS','type="number" min="0.1" step="any" placeholder="Auto"')}<label class="field">Preview frame<input id="previewFrame" type="number" min="0" step="1" value="0"></label></div>
           <p id="mediaProperties" class="muted"></p>
           ${['top','bottom'].map(line => `<h3>${line === 'top' ? 'Top' : 'Bottom'} caption overrides</h3>${fonts(`${line}FontFamily`, 'Font face')}${field(`${line}FontSize`,'Size','type="number" min="1" placeholder="Inherit"')}${select(`${line}FontStyle`,'Extra style',[['','Inherit'],['bold','Bold'],['italic','Italic'],['bold-italic','Bold italic']])}`).join('')}
           <label class="field">Custom font<input id="fontUpload" type="file" accept=".ttf,.otf,.ttc"><span id="fontStatus" class="muted">${e.fontPath ? h(e.fontPath.split('/').pop()) : 'Optional font file'}</span></label>

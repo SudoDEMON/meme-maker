@@ -28,7 +28,7 @@ if [[ -t 1 ]]; then
   BOLD="$(tput bold 2>/dev/null || printf '\033[1m')"
   RESET="$(tput sgr0 2>/dev/null || printf '\033[0m')"
 else
-  RED= GREEN= YELLOW= BLUE= BOLD= RESET=
+  RED='' GREEN='' YELLOW='' BLUE='' BOLD='' RESET=''
 fi
 
 # ── Logging helpers ──────────────────────────────────────────────────────────
@@ -58,6 +58,27 @@ check_deps() {
   fi
 }
 
+# Homebrew's minimal ffmpeg omits drawtext; ffmpeg-full is installed separately.
+# Keep a working renderer from PATH, and resolve the full build only if needed.
+caption_ffmpeg() {
+  local encoder prefix
+  encoder="$(command -v ffmpeg)" || die "ffmpeg is required for captions."
+  if "$encoder" -hide_banner -filters 2>/dev/null | grep -E '[[:space:]]drawtext[[:space:]]' >/dev/null; then
+    printf '%s\n' "$encoder"
+    return
+  fi
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+    prefix="$(brew --prefix ffmpeg-full 2>/dev/null || true)"
+    if [[ -n "$prefix" && -x "$prefix/bin/ffmpeg" ]] &&
+       "$prefix/bin/ffmpeg" -hide_banner -filters 2>/dev/null | grep -E '[[:space:]]drawtext[[:space:]]' >/dev/null; then
+      printf '%s\n' "$prefix/bin/ffmpeg"
+      return
+    fi
+    die "Caption export needs FFmpeg's drawtext filter. Install it with: brew install ffmpeg-full"
+  fi
+  die "Caption export needs FFmpeg built with the drawtext filter (FreeType and HarfBuzz)."
+}
+
 # yt-dlp can hang on machines with flaky IPv6 routes because Python may try an
 # IPv6 address before falling back. Prefer IPv4 by default, but keep it tunable.
 declare -a MM_YTDLP_ARGS=()
@@ -81,11 +102,16 @@ _make_temp() {
     ext="$e"
     shift 2
   fi
-  local tmp
+  # BSD mktemp only randomizes trailing Xs; mm.XXXXXX.mp4 can be a literal
+  # filename on macOS. Reserve a unique directory first, then add the suffix
+  # inside it. Keeping that directory also reserves names for later downloads.
+  local slot tmp
+  slot=$(mktemp -d "$MM_TEMP_ROOT/mm.XXXXXX") || return
+  tmp="$slot/artifact${ext}"
   if [[ $kind == "dir" ]]; then
-    tmp=$(mktemp -d "$MM_TEMP_ROOT/mm.XXXXXX${ext}")
+    mkdir "$tmp" || return
   else
-    tmp=$(mktemp "$MM_TEMP_ROOT/mm.XXXXXX${ext}")
+    : > "$tmp" || return
   fi
   MM_TEMP_PATHS+=("$tmp")
   printf '%s\n' "$tmp"
@@ -94,8 +120,9 @@ _make_temp() {
 make_temp_file() { _make_temp file "$@"; }
 make_temp_dir()  { _make_temp dir  "$@"; }
 
-# Like make_temp_file, but immediately removes the empty placeholder file
-# that mktemp creates. The *name* is still registered for automatic cleanup.
+# Like make_temp_file, but immediately removes the empty placeholder file.
+# Its containing directory reserves the name until MM_TEMP_ROOT is cleaned up,
+# including when this function is called through command substitution.
 # Use this for paths you will pass to yt-dlp (or similar tools that have
 # "file already exists / has already been downloaded" detection and may
 # refuse to overwrite a 0-byte file we pre-created).
@@ -341,7 +368,7 @@ is_zero_time() {
 }
 
 needs_yt_dlp_section() {
-  local start=${1:-}
+  local start=${1:-0:00}
   local end
   end="$(section_end_or_inf "${2:-}")"
 
@@ -349,9 +376,8 @@ needs_yt_dlp_section() {
 }
 
 yt_dlp_section_range() {
-  local start=${1:-}
+  local start=${1:-0:00}
   local end
-  [[ -n "$start" ]] || die "Start time is required."
   end="$(section_end_or_inf "${2:-}")"
   printf '*%s-%s\n' "$start" "$end"
 }

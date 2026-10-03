@@ -6,6 +6,10 @@ Originally created while making memes for a personal project that spiraled into 
 
 Now reasonably robust, portable, and easy to install on new machines, especially Arch-based Linux systems.
 
+HTML capture keeps Chromium's sandbox enabled and uses a pipe for browser control.
+If the operating system cannot provide a browser sandbox, fix that environment
+before rendering untrusted HTML; do not disable the sandbox as a workaround.
+
 ## What's in here
 
 | Script          | Purpose                              | Notes |
@@ -48,6 +52,12 @@ After that you can just run `mememaker`, `meme-convert`, `audio-video`,
 `convert.sh` is linked as `meme-convert` to avoid shadowing ImageMagick's
 common `convert` command.
 
+On macOS, the installer also installs Homebrew's `ffmpeg-full` for caption support.
+If an existing installation reports a missing `drawtext` filter, run
+`brew install ffmpeg-full`. Caption exports automatically use that build when
+the `ffmpeg` on your PATH lacks the filter; no shell PATH changes are needed.
+`npm run doctor` also checks the caption renderer.
+
 ### Local web UI
 
 ```bash
@@ -81,11 +91,23 @@ Processing logs are expandable. The browser reconnects to an active job after
 a connection interruption or refresh, and keeps Cancel available while checking
 its status. Jobs themselves are in memory and do not survive server restarts.
 
+The processing panel shows **Elapsed Time**, **Estimated Time Left**, and a
+checklist of completed, running, and waiting steps. Elapsed time covers the whole
+job, survives refresh/reconnection, and stops when the job completes or stops.
+Estimates use download progress or the current encoder speed and media duration,
+including trims and the shorter soundtrack when replacing audio. They apply to
+the current step, reset between passes, and show **Estimating…** when progress
+is unavailable or stale. Audio replacement and output encoding share one step;
+GIF palettes, downloads, and preparatory trims appear separately when needed.
+
 The editor supports local GIF/MOV/MP4/WebM and remote video. Local files served
 by this app play and seek directly when the browser supports their codec;
 external filesystem paths and remote sources use extracted frame previews.
 Output Start/End accept seconds, `MM:SS`, `HH:MM:SS`, or frame values such as
-`18f`. End is optional. Arrow keys move a focused caption or crop handle;
+`18f`. Start and End are optional throughout the editor and Media Tools: a blank
+Start means the beginning, and a blank End means the end of the source. Preview
+scrubbing does not change the export range. Explicit trim values survive
+inspection, navigation, and refresh. Arrow keys move a focused caption or crop handle;
 hold Shift for larger steps.
 
 The editor stores positions and font sizes in source pixels. Its renderer draws
@@ -153,7 +175,7 @@ sudo pacman -S yt-dlp ffmpeg ttf-dejavu noto-fonts nodejs npm
 
 On **macOS** (with Homebrew):
 ```bash
-brew install yt-dlp ffmpeg node
+brew install yt-dlp ffmpeg ffmpeg-full node
 ```
 
 ## Usage examples
@@ -229,7 +251,7 @@ brew install yt-dlp ffmpeg node
 - `audio_video.sh` is the general add-audio entrypoint for local/remote media plus a local audio file.
 - `combine_videos.sh` appends two or more local clips. Matching streams use a fast lossless copy; differing resolution, frame rate, codec, or audio layout triggers a normalized re-encode.
 - Caption text can be blank: use `"" ""` or `--no-text`. In the interactive menu, leave text prompts blank for no text.
-- End time can be blank/omitted to use everything from the start time through the end of the video. Internally this uses yt-dlp's `inf` section end when a section is still needed.
+- Start and End can be blank/omitted: Start defaults to `0:00`, and End defaults to the end of the media. For the CLI, omit both times to use the full source (for example, `./convert.sh input.mp4 webm output.webm`); one time argument is the Start. Internally this uses yt-dlp's `inf` section end when a section is still needed.
 - If a YouTube section download is rejected by the media server, `convert.sh` retries short sections with the `web_embedded` player client. If sectioning still fails—or the requested section is long—it downloads the full source and trims locally with ffmpeg.
 - `--top-y`, `--bottom-y`, `--font-size`, `--width`, and `--fps` control caption placement and output sizing.
 - `--top-x`, `--bottom-x`, `--bottom-from-top`, `--crop`, `--font-family`, `--bold`, `--italic`, `--underline`, and `--strikethrough` are available for the visual editor and advanced caption placement.
@@ -249,7 +271,7 @@ All scripts support `-h` / `--help`.
 - `MM_YTDLP_FORCE_IPV4=0` — allow yt-dlp to use IPv6 too; by default meme-maker passes `--force-ipv4` to avoid hangs on flaky IPv6 routes
 - `MM_YTDLP_SOCKET_TIMEOUT=15` — socket timeout, in seconds, passed to yt-dlp; set `0` to use yt-dlp's default
 - `MM_YTDLP_SECTION_RETRY_CLIENT=web_embedded` — YouTube player client used after a failed section download; set `0` to skip the client-specific retry
-- `MM_YTDLP_SECTION_RETRY_MAX_SECONDS=600` — maximum failed section length to retry as a section; longer ranges fall back to a normal full download plus local trim
+- `MM_YTDLP_SECTION_RETRY_MAX_SECONDS=600` — maximum finite failed section length to retry as a section; longer/open-ended ranges or invalid limits fall back to a full download plus local trim
 - `MM_WEB_PREVIEW_TIMEOUT_MS=45000` — timeout for remote preview yt-dlp/ffmpeg helper processes
 - `MM_WEB_PREVIEW_CACHE_ENTRIES=24` — number of remote preview clip windows cached by the local web server; set `0` to disable
 - `MM_WEB_MAX_UPLOAD_BYTES=2147483648` — maximum local web file-picker upload size (default 2 GiB)
@@ -306,3 +328,10 @@ ISC (same as the original package.json)
 ---
 
 Made with too much yt-dlp and stubbornness.
+
+## Local CI migration
+
+The `.forgejo/workflows/` checks run on the isolated Linux worker with one job
+at a time. GitHub workflows stay available until the matching Forgejo checks
+pass; GitHub remains the issue, pull-request and release archive. Build jobs
+do not receive production deployment credentials.
