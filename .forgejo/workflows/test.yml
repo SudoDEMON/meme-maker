@@ -20,6 +20,10 @@ jobs:
       - name: Install media test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fontconfig fonts-dejavu-core libasound2t64 libatk-bridge2.0-0 libatk1.0-0 libcups2 libgbm1 libgtk-3-0 libnss3 libxcomposite1 libxdamage1 libxrandr2
+          sudo apt-get install -y ffmpeg fontconfig fonts-dejavu-core chromium
       - run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
       - run: npm run check
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
