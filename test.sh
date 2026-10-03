@@ -322,14 +322,7 @@ function countDownloadSections() {
   return (fs.readFileSync(ytDlpLog, 'utf8').match(/--download-sections/g) || []).length;
 }
 
-function processAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
+const { processAlive } = require('./tests/process-state.cjs');
 
 (async () => {
   await waitForServer();
@@ -482,11 +475,15 @@ function processAlive(pid) {
 
   const longFfmpeg = path.join(tmpDir, 'bin', 'ffmpeg');
   const longPid = path.join(tmpDir, 'long-ffmpeg.pid');
+  const longSleepPid = path.join(tmpDir, 'long-sleep.pid');
   fs.writeFileSync(longFfmpeg, `#!/usr/bin/env bash
 set -euo pipefail
 trap 'exit 143' TERM INT
 printf '%s\\n' "$$" >"${longPid}"
-sleep 60
+sleep 60 &
+sleeper=$!
+printf '%s\\n' "$sleeper" >"${longSleepPid}"
+wait "$sleeper"
 out="\${@: -1}"
 mkdir -p "$(dirname "$out")"
 printf 'encoded' >"$out"
@@ -505,10 +502,12 @@ printf 'encoded' >"$out"
       bottomText: ''
     }
   });
-  await waitFor(() => fs.existsSync(longPid), 'long ffmpeg pid');
+  await waitFor(() => fs.existsSync(longPid) && fs.existsSync(longSleepPid), 'long ffmpeg and sleep pids');
   const pid = Number(fs.readFileSync(longPid, 'utf8').trim());
+  const sleepPid = Number(fs.readFileSync(longSleepPid, 'utf8').trim());
   await fetch(`${base}/api/jobs/${cancellable.id}/cancel`, { method: 'POST' });
-  await waitFor(() => !processAlive(pid), 'cancelled child process exit');
+  await waitFor(() => !processAlive(pid), 'cancelled wrapper process exit');
+  await waitFor(() => !processAlive(sleepPid), 'cancelled sleeping descendant exit');
   await waitFor(async () => {
     const current = await getJson(`/api/jobs/${cancellable.id}`);
     return current.status === 'cancelled';
