@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const { fixture, waitFor, brightBounds } = require('./helpers.cjs');
 
 test('media server regressions', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
@@ -20,6 +21,26 @@ test('media server regressions', {skip:process.platform === 'win32' ? 'Integrati
     assert.ok(cropBounds.count>100);
     assert.ok(cropBounds.minX>=75 && cropBounds.minX<90,JSON.stringify(cropBounds));
     assert.ok(cropBounds.minY>=95 && cropBounds.minY<115,JSON.stringify(cropBounds));
+  });
+  await t.test('blank captions export crop-only media in source coordinates', async () => {
+    for (const format of ['webm', 'mp4', 'gif']) {
+      const job = await f.job('meme-editor', {
+        input:f.input, topText:'', bottomText:'', topX:'62', topY:'698',
+        bottomX:'960', bottomY:'1015', fontSize:'80', fontFamily:'sans-serif',
+        bold:true, cropX:'0', cropY:'306', cropWidth:'558', cropHeight:'414',
+        width:'720', format, output:`crop-only-${format}`
+      });
+      const output = path.join(f.root, job.outputPath);
+      const probe = JSON.parse(execFileSync('ffprobe', ['-v','error',
+        '-show_entries','stream=codec_type,codec_name,width,height',
+        '-show_entries','format=duration','-of','json',output], {encoding:'utf8'}));
+      const video = probe.streams.find(stream => stream.codec_type === 'video');
+      assert.equal(video.width,720);
+      assert.equal(video.height,534);
+      assert.ok(Number(probe.format.duration)>=1.9);
+      if (format !== 'gif') assert.ok(probe.streams.some(stream => stream.codec_type === 'audio'));
+      execFileSync('ffmpeg', ['-v','error','-i',output,'-f','null','-']);
+    }
   });
   await t.test('slow metadata leaves the server responsive and is reused for export', async () => {
     const source='https://example.test/slow.mp4';
