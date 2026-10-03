@@ -127,10 +127,20 @@ for arg in "$@"; do
 done
 printf '%s\n' "$*" >>"${MM_TEST_YTDLP_LOG:?}"
 out=""
+has_download_sections=0
+has_web_embedded_client=0
 while (($#)); do
   case "$1" in
     -o)
       out="$2"
+      shift 2
+      ;;
+    --download-sections)
+      has_download_sections=1
+      shift 2
+      ;;
+    --extractor-args)
+      [[ "$2" == "youtube:player_client=web_embedded" ]] && has_web_embedded_client=1
       shift 2
       ;;
     *)
@@ -139,6 +149,15 @@ while (($#)); do
   esac
 done
 [[ -n "$out" ]] || exit 2
+if [[ "${MM_TEST_FAIL_DEFAULT_DOWNLOAD:-0}" == "1" && "$has_web_embedded_client" == "0" ]]; then
+  exit 8
+fi
+if [[ "${MM_TEST_FAIL_DEFAULT_SECTION:-0}" == "1" && "$has_download_sections" == "1" && "$has_web_embedded_client" == "0" ]]; then
+  exit 8
+fi
+if [[ "${MM_TEST_FAIL_SECTION:-0}" == "1" && "$has_download_sections" == "1" ]]; then
+  exit 8
+fi
 printf 'media' >"$out"
 EOF
 chmod +x "$stub_bin/yt-dlp"
@@ -161,6 +180,45 @@ if grep -q -- '--download-sections' "$tmp_dir/yt-dlp.log"; then
   echo "Expected blank end from 0:00 to skip --download-sections"
   exit 1
 fi
+
+MM_TEST_FAIL_DEFAULT_SECTION=1 \
+MM_TEST_YTDLP_LOG="$tmp_dir/client-retry-yt-dlp.log" \
+MM_TEST_FFMPEG_LOG="$tmp_dir/client-retry-ffmpeg.log" \
+PATH="$stub_bin:$PATH" \
+  ./convert.sh e3zN3rn2g7M 0:10 0:20 mp3 "$tmp_dir/client-retry.mp3" >/dev/null 2>&1
+[[ "$(wc -l <"$tmp_dir/client-retry-yt-dlp.log")" -eq 2 ]]
+head -n 1 "$tmp_dir/client-retry-yt-dlp.log" | grep -q -- '--download-sections'
+tail -n 1 "$tmp_dir/client-retry-yt-dlp.log" | grep -q -- '--download-sections'
+tail -n 1 "$tmp_dir/client-retry-yt-dlp.log" | grep -q -- 'youtube:player_client=web_embedded'
+if grep -q -- '-ss 0:10 -to 0:20' "$tmp_dir/client-retry-ffmpeg.log"; then
+  echo "Expected successful YouTube client section retry to skip local trimming"
+  exit 1
+fi
+
+MM_TEST_FAIL_DEFAULT_DOWNLOAD=1 \
+MM_TEST_YTDLP_LOG="$tmp_dir/full-client-retry-yt-dlp.log" \
+MM_TEST_FFMPEG_LOG="$tmp_dir/full-client-retry-ffmpeg.log" \
+PATH="$stub_bin:$PATH" \
+  ./convert.sh e3zN3rn2g7M 0:00 "" mp3 "$tmp_dir/full-client-retry.mp3" >/dev/null 2>&1
+[[ "$(wc -l <"$tmp_dir/full-client-retry-yt-dlp.log")" -eq 2 ]]
+if grep -q -- '--download-sections' "$tmp_dir/full-client-retry-yt-dlp.log"; then
+  echo "Expected full download client retry to skip sectioning"
+  exit 1
+fi
+tail -n 1 "$tmp_dir/full-client-retry-yt-dlp.log" | grep -q -- 'youtube:player_client=web_embedded'
+
+MM_TEST_FAIL_SECTION=1 \
+MM_TEST_YTDLP_LOG="$tmp_dir/fallback-yt-dlp.log" \
+MM_TEST_FFMPEG_LOG="$tmp_dir/fallback-ffmpeg.log" \
+PATH="$stub_bin:$PATH" \
+  ./convert.sh e3zN3rn2g7M 0:10 0:20 mp3 "$tmp_dir/fallback.mp3" >/dev/null 2>&1
+[[ "$(wc -l <"$tmp_dir/fallback-yt-dlp.log")" -eq 3 ]]
+head -n 1 "$tmp_dir/fallback-yt-dlp.log" | grep -q -- '--download-sections'
+if tail -n 1 "$tmp_dir/fallback-yt-dlp.log" | grep -q -- '--download-sections'; then
+  echo "Expected section failure retry to download the full source"
+  exit 1
+fi
+grep -q -- '-ss 0:10 -to 0:20' "$tmp_dir/fallback-ffmpeg.log"
 
 ffmpeg -v error -f lavfi -i 'color=c=black:s=320x180:r=10:d=2' \
   -c:v libx264 -pix_fmt yuv420p "$tmp_dir/input.mp4"

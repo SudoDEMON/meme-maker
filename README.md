@@ -230,6 +230,7 @@ brew install yt-dlp ffmpeg node
 - `combine_videos.sh` appends two or more local clips. Matching streams use a fast lossless copy; differing resolution, frame rate, codec, or audio layout triggers a normalized re-encode.
 - Caption text can be blank: use `"" ""` or `--no-text`. In the interactive menu, leave text prompts blank for no text.
 - End time can be blank/omitted to use everything from the start time through the end of the video. Internally this uses yt-dlp's `inf` section end when a section is still needed.
+- If a YouTube section download is rejected by the media server, `convert.sh` retries short sections with the `web_embedded` player client. If sectioning still fails—or the requested section is long—it downloads the full source and trims locally with ffmpeg.
 - `--top-y`, `--bottom-y`, `--font-size`, `--width`, and `--fps` control caption placement and output sizing.
 - `--top-x`, `--bottom-x`, `--bottom-from-top`, `--crop`, `--font-family`, `--bold`, `--italic`, `--underline`, and `--strikethrough` are available for the visual editor and advanced caption placement.
 - `--top-font-family`, `--top-font-size`, `--top-bold`, `--top-italic`, `--bottom-font-family`, `--bottom-font-size`, `--bottom-bold`, and `--bottom-italic` control the two caption lines independently.
@@ -247,6 +248,8 @@ All scripts support `-h` / `--help`.
 - `MM_OUTPUT_FPS=30` — optional forced output frame rate for `mememaker`
 - `MM_YTDLP_FORCE_IPV4=0` — allow yt-dlp to use IPv6 too; by default meme-maker passes `--force-ipv4` to avoid hangs on flaky IPv6 routes
 - `MM_YTDLP_SOCKET_TIMEOUT=15` — socket timeout, in seconds, passed to yt-dlp; set `0` to use yt-dlp's default
+- `MM_YTDLP_SECTION_RETRY_CLIENT=web_embedded` — YouTube player client used after a failed section download; set `0` to skip the client-specific retry
+- `MM_YTDLP_SECTION_RETRY_MAX_SECONDS=600` — maximum failed section length to retry as a section; longer ranges fall back to a normal full download plus local trim
 - `MM_WEB_PREVIEW_TIMEOUT_MS=45000` — timeout for remote preview yt-dlp/ffmpeg helper processes
 - `MM_WEB_PREVIEW_CACHE_ENTRIES=24` — number of remote preview clip windows cached by the local web server; set `0` to disable
 - `MM_WEB_MAX_UPLOAD_BYTES=2147483648` — maximum local web file-picker upload size (default 2 GiB)

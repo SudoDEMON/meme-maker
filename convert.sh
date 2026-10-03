@@ -39,6 +39,49 @@ ensure_parent_dir() {
   [[ "$d" != "." ]] && mkdir -p "$d"
 }
 
+is_youtube_source() {
+  local source=${1:-}
+  if ! looks_like_url "$source"; then
+    return 0
+  fi
+  [[ "$source" =~ ^https?://([^/]+\.)?(youtube\.com|youtube-nocookie\.com|youtu\.be)(/|$) ]]
+}
+
+build_remote_yt_args() {
+  local type=$1
+  local target=$2
+  CONVERT_YT_ARGS=("${MM_YTDLP_ARGS[@]}")
+  if [[ "$type" == "mp3" ]]; then
+    CONVERT_YT_ARGS+=(-x --audio-format mp3 --audio-quality 0 --force-overwrites -o "$target")
+  else
+    CONVERT_YT_ARGS+=(-f "bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best" --merge-output-format mp4 --force-overwrites -o "$target")
+  fi
+}
+
+section_retry_is_short() {
+  local start=$1
+  local end=$2
+  local max_seconds=${MM_YTDLP_SECTION_RETRY_MAX_SECONDS:-600}
+
+  looks_like_time "$start" || return 0
+  looks_like_time "$end" || return 0
+  [[ "${end,,}" != "inf" ]] || return 0
+  [[ "$max_seconds" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 0
+
+  awk -v start="$start" -v end="$end" -v max="$max_seconds" '
+    function seconds(value, parts, count) {
+      count = split(value, parts, ":")
+      if (count == 3) return parts[1] * 3600 + parts[2] * 60 + parts[3]
+      if (count == 2) return parts[1] * 60 + parts[2]
+      return parts[1]
+    }
+    BEGIN {
+      span = seconds(end) - seconds(start)
+      exit !(span >= 0 && span <= max)
+    }
+  '
+}
+
 append_trim_args() {
   local start=$1
   local end=$2
@@ -56,29 +99,86 @@ download_remote_source() {
   local start=$2
   local end=$3
   local type=$4
-  local src end_label section_range
+  local src retry_src fallback_src end_label section_range source_url
+  local section_retry_client=${MM_YTDLP_SECTION_RETRY_CLIENT-web_embedded}
+  local needs_local_trim=0
+  local section_retry_succeeded=0
+  local -a yt_args retry_args fallback_args fallback_client_args
 
   check_deps yt-dlp
   end_label="$(section_end_label "$end")"
   section_range="$(yt_dlp_section_range "$start" "$end")"
+  source_url="$(yt_dlp_source_url "$source")"
 
   if [[ "$type" == "mp3" ]]; then
     src="$(make_temp_name --ext mp3)"
-    YT_ARGS=("${MM_YTDLP_ARGS[@]}" -x --audio-format mp3 --audio-quality 0 --force-overwrites -o "$src")
   else
     src="$(make_temp_name --ext mp4)"
-    YT_ARGS=("${MM_YTDLP_ARGS[@]}" -f "bv*[ext=mp4]+ba/b[ext=mp4]/bv*+ba/best" --merge-output-format mp4 --force-overwrites -o "$src")
   fi
+  build_remote_yt_args "$type" "$src"
+  yt_args=("${CONVERT_YT_ARGS[@]}")
 
   if needs_yt_dlp_section "$start" "$end"; then
     info "Downloading section $start -> $end_label from $source..." >&2
-    YT_ARGS+=(--download-sections "$section_range" --force-keyframes-at-cuts)
+    if ! yt-dlp "${yt_args[@]}" --download-sections "$section_range" --force-keyframes-at-cuts "$source_url" >&2; then
+      if is_youtube_source "$source" && [[ -n "$section_retry_client" ]] && ! is_false_env "$section_retry_client"; then
+        if section_retry_is_short "$start" "$end"; then
+          warn "Section download failed; retrying with YouTube player client $section_retry_client..." >&2
+          if [[ "$type" == "mp3" ]]; then
+            retry_src="$(make_temp_name --ext mp3)"
+          else
+            retry_src="$(make_temp_name --ext mp4)"
+          fi
+          build_remote_yt_args "$type" "$retry_src"
+          retry_args=("${CONVERT_YT_ARGS[@]}" --extractor-args "youtube:player_client=$section_retry_client")
+          if yt-dlp "${retry_args[@]}" --download-sections "$section_range" --force-keyframes-at-cuts "$source_url" >&2; then
+            src="$retry_src"
+            section_retry_succeeded=1
+          else
+            fallback_client_args=(--extractor-args "youtube:player_client=$section_retry_client")
+          fi
+        else
+          fallback_client_args=(--extractor-args "youtube:player_client=$section_retry_client")
+        fi
+      fi
+
+      if [[ "$section_retry_succeeded" == "0" ]]; then
+        warn "Section download still failed; retrying the full source and trimming it locally..." >&2
+        needs_local_trim=1
+        if [[ "$type" == "mp3" ]]; then
+          fallback_src="$(make_temp_name --ext mp3)"
+        else
+          fallback_src="$(make_temp_name --ext mp4)"
+        fi
+        build_remote_yt_args "$type" "$fallback_src"
+        fallback_args=("${CONVERT_YT_ARGS[@]}" "${fallback_client_args[@]}")
+        if ! yt-dlp "${fallback_args[@]}" "$source_url" >&2; then
+          die "yt-dlp failed to download both the requested section and the full source for $source."
+        fi
+        src="$fallback_src"
+      fi
+    fi
   else
     info "Downloading full source from $source..." >&2
+    if ! yt-dlp "${yt_args[@]}" "$source_url" >&2; then
+      if is_youtube_source "$source" && [[ -n "$section_retry_client" ]] && ! is_false_env "$section_retry_client"; then
+        warn "Download failed; retrying with YouTube player client $section_retry_client..." >&2
+        if [[ "$type" == "mp3" ]]; then
+          retry_src="$(make_temp_name --ext mp3)"
+        else
+          retry_src="$(make_temp_name --ext mp4)"
+        fi
+        build_remote_yt_args "$type" "$retry_src"
+        retry_args=("${CONVERT_YT_ARGS[@]}" --extractor-args "youtube:player_client=$section_retry_client")
+        if ! yt-dlp "${retry_args[@]}" "$source_url" >&2; then
+          die "yt-dlp failed to download $source with both the default and fallback YouTube clients."
+        fi
+        src="$retry_src"
+      else
+        die "yt-dlp failed to download $source."
+      fi
+    fi
   fi
-
-  YT_ARGS+=("$(yt_dlp_source_url "$source")")
-  yt-dlp "${YT_ARGS[@]}" >&2
 
   if [[ "$type" == "mp3" && ! -s "$src" && -s "$src.mp3" ]]; then
     register_temp_path "$src.mp3"
@@ -89,7 +189,7 @@ download_remote_source() {
   fi
 
   [[ -s "$src" ]] || die "yt-dlp produced no usable media for $source ($start-$end_label). Try a different source or run with MM_DEBUG=1."
-  printf '%s\n' "$src"
+  printf '%s\t%s\n' "$src" "$needs_local_trim"
 }
 
 encode_output() {
@@ -167,8 +267,13 @@ if [[ -f "$SOURCE_ARG" ]]; then
   INPUT="$SOURCE_ARG"
   append_trim_args "$START" "$END"
 else
-  INPUT="$(download_remote_source "$SOURCE_ARG" "$START" "$END" "$TYPE")"
-  TRIM_ARGS=()
+  REMOTE_RESULT="$(download_remote_source "$SOURCE_ARG" "$START" "$END" "$TYPE")"
+  IFS=$'\t' read -r INPUT NEEDS_LOCAL_TRIM <<<"$REMOTE_RESULT"
+  if [[ "$NEEDS_LOCAL_TRIM" == "1" ]]; then
+    append_trim_args "$START" "$END"
+  else
+    TRIM_ARGS=()
+  fi
 fi
 
 encode_output "$INPUT" "$OUT" "$TYPE" "${TRIM_ARGS[@]}"
