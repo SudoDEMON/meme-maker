@@ -114,6 +114,8 @@ The editor stores positions and font sizes in source pixels. Its renderer draws
 captions before crop/resize, so resizing moves and scales the image and text
 together. It loads the server's resolved font faces for the browser preview,
 with a browser-font fallback when that face cannot be loaded. Remote metadata
+uses compact yt-dlp output containing only editor fields and format dimensions,
+so large fragment lists do not exceed the metadata capture limit. Metadata
 is cached for five minutes, including in-flight requests. Obsolete preview
 requests are cancelled, and remote preview windows are cached by source/second.
 

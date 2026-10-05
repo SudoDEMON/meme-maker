@@ -1,4 +1,4 @@
-import { state, assetById, isVideo, editAsset, persist, escapeHtml as h, formatTime } from './state.js';
+import { state, newAssetId, assetById, isVideo, editAsset, persist, escapeHtml as h, formatTime } from './state.js';
 import { post, upload } from './api.js';
 import { MediaTools } from './media-tools.js';
 import { MemeEditor } from './editor.js';
@@ -24,7 +24,7 @@ function changed(render = true) {
 function addResult(job) {
   let asset = state.assets.find(item => item.path === job.outputPath);
   if (!asset) {
-    asset = { id: crypto.randomUUID(), path: job.outputPath, name: job.outputPath.split('/').pop(), fileUrl: job.fileUrl };
+    asset = { id: newAssetId(), path: job.outputPath, name: job.outputPath.split('/').pop(), fileUrl: job.fileUrl };
     state.assets.push(asset);
   } else { asset.fileUrl = job.fileUrl; delete asset.info; }
   inspect(asset);
@@ -104,7 +104,7 @@ async function inspect(asset) {
 function addSource(path, name, fileUrl) {
   let asset = state.assets.find(item => item.path === path);
   if (!asset) {
-    asset = { id: crypto.randomUUID(), path, name: name || path.split('/').pop() || path, fileUrl };
+    asset = { id: newAssetId(), path, name: name || path.split('/').pop() || path, fileUrl };
     state.assets.push(asset);
   }
   if (state.operation === 'combine' && state.section === 'media') {

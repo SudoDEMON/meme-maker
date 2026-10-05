@@ -9,6 +9,23 @@ const { fixture, waitFor, brightBounds } = require('./helpers.cjs');
 test('media server regressions', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
   const f = await fixture();
   t.after(() => f.close());
+  await t.test('large remote metadata keeps format fallbacks without fragment lists', async () => {
+    const info = await f.post('/api/source-info', { source:'https://example.test/large-metadata' });
+    assert.equal(info.title, 'Remote "quoted" fixture — ✓');
+    assert.equal(info.defaultStem, 'fixture');
+    assert.equal(info.duration, 2);
+    assert.equal(info.width, 1920);
+    assert.equal(info.height, 1080);
+    assert.equal(info.fps, 30);
+    assert.equal(info.frameCount, 60);
+  });
+  await t.test('remote metadata accepts missing formats and still bounds unexpected output', async () => {
+    const info = await f.post('/api/source-info', { source:'https://example.test/no-formats' });
+    assert.equal(info.width, 1280);
+    assert.equal(info.height, 720);
+    assert.equal(info.fps, 10);
+    await assert.rejects(f.post('/api/source-info', { source:'https://example.test/oversized-output' }), /too much metadata/);
+  });
   await t.test('remote caption export downloads, prepares, and encodes distinct temporary files', async () => {
     const job = await f.job('meme-editor', {
       input:'https://example.test/remote.mp4', format:'webm', output:'remote-caption',

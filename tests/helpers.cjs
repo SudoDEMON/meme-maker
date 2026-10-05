@@ -33,9 +33,25 @@ async function fixture({ fps = 10, duration = 2 } = {}) {
 const fs = require('fs');
 const args = process.argv.slice(2);
 const source = args.at(-1);
-if (args.includes('--dump-single-json')) {
+if (args.includes('--dump-single-json') || args.includes('--print')) {
   fs.appendFileSync(${JSON.stringify(probeLog)}, source+'\\n');
-  const print = () => console.log(JSON.stringify({id:'fixture',title:'Remote fixture',width:1280,height:720,fps:${fps},duration:${duration}}));
+  const print = () => {
+    if (source.includes('oversized-output')) return console.log('x'.repeat(3 * 1024 * 1024));
+    const info = {id:'fixture',title:'Remote fixture',width:1280,height:720,fps:${fps},duration:${duration}};
+    if (source.includes('large-metadata')) {
+      info.title = 'Remote "quoted" fixture — ✓';
+      info.width = info.height = info.fps = null;
+      info.formats = [
+        {width:null,height:null,fps:null},
+        {width:640,height:360,fps:24},
+        {width:1920,height:1080,fps:30,fragments:[{url:'https://example.test/'+'x'.repeat(3 * 1024 * 1024)}]}
+      ];
+    }
+    if (args.includes('--print')) {
+      const {formats, ...fields} = info;
+      console.log(JSON.stringify({info:fields,formats:formats?.map(({width,height,fps})=>({width,height,fps})) ?? null}));
+    } else console.log(JSON.stringify(info));
+  };
   if (source.includes('slow')) {
     fs.writeFileSync(${JSON.stringify(marker)}, String(process.pid));
     setTimeout(print, 900);

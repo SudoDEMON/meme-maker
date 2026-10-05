@@ -130,16 +130,19 @@ async function inspectSource(value) {
   }
 
   const remote = ytDlpProbeSource(raw);
+  // Full dumps can contain megabytes of fragments and thumbnails. Keep only
+  // editor metadata and format dimensions for the existing fallback selection.
   const { stdout } = await runCapture('yt-dlp', [
     ...ytDlpNetworkArgs(),
-    '--dump-single-json',
     '--skip-download',
     '--no-warnings',
     '--no-playlist',
+    '--output-na-placeholder', 'null',
+    '--print', '{"info":%(.{id,display_id,title,extractor_key,extractor,webpage_url,duration,width,height,fps})j,"formats":%(formats.:.{width,height,fps})j}',
     remote
   ]);
-  const info = JSON.parse(stdout || '{}');
-  return remoteMediaInfo(info, raw, remote);
+  const metadata = JSON.parse(stdout || '{}');
+  return remoteMediaInfo({ ...metadata.info, formats: metadata.formats }, raw, remote);
 }
 
 // Cache completed and in-flight metadata by source identity, not browser form.

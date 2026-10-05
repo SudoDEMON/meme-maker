@@ -13,6 +13,42 @@ async function fill(page, selector, value) {
   },value);
 }
 
+test('plain HTTP supports links, uploads, completed outputs, and restored library IDs', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
+  const f=await fixture();
+  t.after(()=>f.close());
+  const browser=await puppeteer.launch({headless:true,args:['--no-sandbox','--no-proxy-server','--host-resolver-rules=MAP meme-maker.test 127.0.0.1']});
+  t.after(()=>browser.close());
+  const page=await browser.newPage();
+  const errors=[];
+  page.on('pageerror',err=>errors.push(err.message));
+  await page.goto(f.url.replace('127.0.0.1','meme-maker.test'));
+  await page.waitForSelector('#mediaForm');
+  assert.equal(await page.evaluate(()=>isSecureContext),false);
+  assert.equal(await page.evaluate(()=>typeof crypto.randomUUID),'undefined');
+
+  await fill(page,'#sourceInput','https://example.test/remote.mp4');
+  await page.click('#addSourceForm button');
+  await page.waitForFunction(()=>document.querySelector('.asset-select strong')?.textContent==='Remote fixture');
+  await (await page.$('#mediaUpload')).uploadFile(f.input);
+  await page.waitForFunction(()=>document.querySelector('#libraryStatus').textContent==='Added input.mp4');
+  await fill(page,'#mediaForm [name="output"]','http-output');
+  await page.click('#mediaForm [data-run]');
+  await page.waitForFunction(()=>document.querySelector('#resultTitle').textContent==='Ready to save');
+  await page.waitForFunction(()=>document.querySelectorAll('.asset-card').length===3);
+  const ids=await page.$$eval('.asset-card',els=>els.map(el=>el.dataset.asset));
+  assert.equal(new Set(ids).size,3);
+  assert.ok(ids.every(Boolean));
+  await page.reload();
+  await page.waitForSelector('#mediaForm');
+  assert.deepEqual(await page.$$eval('.asset-card',els=>els.map(el=>el.dataset.asset)),ids);
+  await fill(page,'#sourceInput',f.input);
+  await page.click('#addSourceForm button');
+  const restoredIds=await page.$$eval('.asset-card',els=>els.map(el=>el.dataset.asset));
+  assert.equal(restoredIds.length,4);
+  assert.equal(new Set(restoredIds).size,4);
+  assert.deepEqual(errors,[]);
+});
+
 test('two-section browser workflows', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
   const f=await fixture();
   t.after(()=>f.close());

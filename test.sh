@@ -120,8 +120,8 @@ cat >"$stub_bin/yt-dlp" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 for arg in "$@"; do
-  if [[ "$arg" == "--dump-single-json" ]]; then
-    printf '%s\n' '{"id":"e3zN3rn2g7M","title":"Remote Fixture","duration":2,"fps":10,"width":320,"height":180,"extractor_key":"Test","webpage_url":"https://example.test/video","formats":[{"width":320,"height":180,"fps":10}]}'
+  if [[ "$arg" == "--print" ]]; then
+    printf '%s\n' '{"info":{"id":"e3zN3rn2g7M","title":"Remote Fixture","duration":2,"fps":10,"width":320,"height":180,"extractor_key":"Test","webpage_url":"https://example.test/video"},"formats":[{"width":320,"height":180,"fps":10}]}'
     exit 0
   fi
 done
