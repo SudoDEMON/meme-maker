@@ -61,19 +61,33 @@ function describeAsset(asset) {
   return asset.error || (info ? [info.duration ? formatTime(info.duration) : '', info.width ? `${info.width} × ${info.height}` : 'Audio'].filter(Boolean).join(' · ') : /\.html?$/i.test(asset.path) ? 'HTML animation' : 'Inspecting…');
 }
 function renderLibrary() {
+  const active = document.activeElement;
+  const focusedCard = active.closest('[data-asset]');
+  const focus = list.contains(active) && focusedCard ? {
+    id: focusedCard.dataset.asset,
+    index: [...list.children].indexOf(focusedCard),
+    action: active.matches('[data-move]') ? `[data-move="${active.dataset.move}"]` : active.matches('[data-edit]') ? '[data-edit]' : active.matches('[data-remove]') ? '[data-remove]' : '[name="selectedAsset"]'
+  } : null;
+  const editing = state.section === 'editor';
   const combining = state.section === 'media' && state.operation === 'combine';
   const ordered = combining ? [...state.selectedIds.map(assetById).filter(Boolean), ...state.assets.filter(asset => !state.selectedIds.includes(asset.id))] : state.assets;
   list.innerHTML = ordered.map(asset => {
-    const selected = state.selectedIds.includes(asset.id);
-    const editing = state.section === 'editor' && state.editor.sourceId === asset.id;
+    const selected = editing ? state.editor.sourceId === asset.id : state.selectedIds.includes(asset.id);
     const description = describeAsset(asset);
-    return `<li class="asset-card ${selected || editing ? 'selected' : ''}" data-asset="${h(asset.id)}">
-      <label class="asset-select"><input type="${combining ? 'checkbox' : 'radio'}" name="selectedAsset" value="${h(asset.id)}" ${selected ? 'checked' : ''}><span><strong title="${h(asset.name)}">${h(asset.name)}</strong><small class="${asset.error ? 'error' : ''}">${h(description)}</small></span></label>
+    return `<li class="asset-card ${selected ? 'selected' : ''}" data-asset="${h(asset.id)}">
+      <label class="asset-select"><input type="${combining ? 'checkbox' : 'radio'}" name="selectedAsset" value="${h(asset.id)}" ${selected ? 'checked' : ''} ${editing && !isVideo(asset) ? 'disabled' : ''}><span><strong title="${h(asset.name)}">${h(asset.name)}</strong><small class="${asset.error ? 'error' : ''}">${h(description)}</small></span></label>
       <div class="asset-actions">${isVideo(asset) ? `<button type="button" data-edit="${h(asset.id)}" class="text-button">Edit →</button>` : ''}${combining && selected ? `<span class="reorder-actions"><button type="button" data-move="-1" aria-label="Move ${h(asset.name)} earlier" ${state.selectedIds.indexOf(asset.id) === 0 ? 'disabled' : ''}>↑</button><button type="button" data-move="1" aria-label="Move ${h(asset.name)} later" ${state.selectedIds.indexOf(asset.id) === state.selectedIds.length - 1 ? 'disabled' : ''}>↓</button></span>` : ''}<button type="button" class="text-button remove-asset" data-remove="${h(asset.id)}" aria-label="Remove ${h(asset.name)} from library">×</button></div>
     </li>`;
   }).join('');
   document.querySelector('#assetCount').textContent = state.assets.length;
   document.querySelector('#libraryEmpty').hidden = state.assets.length > 0;
+  if (focus) {
+    const card = list.querySelector(`[data-asset="${CSS.escape(focus.id)}"]`) || list.children[Math.min(focus.index, list.children.length - 1)];
+    // At a reorder boundary, keep the same asset and offer the remaining move.
+    // Removing a card falls back to its next neighbour (or the preceding last card).
+    const target = card?.querySelector(`${focus.action}:not(:disabled)`) || card?.querySelector('[data-move]:not(:disabled)') || card?.querySelector('input:not(:disabled), button:not(:disabled)') || document.querySelector('#sourceInput');
+    target.focus({ preventScroll: true });
+  }
 }
 async function inspect(asset) {
   if (/\.html?$/i.test(asset.path)) return;
@@ -109,7 +123,7 @@ function addSource(path, name, fileUrl) {
   }
   if (state.operation === 'combine' && state.section === 'media') {
     if (!state.selectedIds.includes(asset.id)) state.selectedIds.push(asset.id);
-  } else state.selectedIds = [asset.id];
+  } else if (state.section === 'media') state.selectedIds = [asset.id];
   renderLibrary();
   if (state.section === 'media') media.render();
   editor.updateSources();
@@ -161,12 +175,13 @@ for (const type of ['dragleave','drop']) dropZone.addEventListener(type, event =
 list.addEventListener('change', event => {
   if (!event.target.matches('[name="selectedAsset"]')) return;
   const id = event.target.value;
-  if (state.section === 'media' && state.operation === 'combine') {
+  if (state.section === 'editor') {
+    openEditor(assetById(id));
+  } else if (state.operation === 'combine') {
     if (event.target.checked) state.selectedIds.push(id);
     else state.selectedIds = state.selectedIds.filter(item => item !== id);
   } else {
     state.selectedIds = [id];
-    if (state.section === 'editor') openEditor(assetById(id));
   }
   if (state.section === 'media') media.render();
   changed();

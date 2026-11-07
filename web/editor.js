@@ -160,6 +160,8 @@ export class MemeEditor {
       state.editor = { ...editorDefaults(), sourceId: event.target.value };
       persist();
       this.render();
+      this.panel.querySelector('#editorSource').focus({ preventScroll: true });
+      this.onChange();
     }
     if (event.target.id === 'fontUpload' && event.target.files[0]) {
       const file = event.target.files[0];

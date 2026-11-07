@@ -4,11 +4,74 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { fixture, waitFor, brightBounds } = require('./helpers.cjs');
+const { fixture, waitFor, brightBounds, probeVideo, rotatedFixture } = require('./helpers.cjs');
 
 test('media server regressions', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
   const f = await fixture();
   t.after(() => f.close());
+  await t.test('literal punctuation and expansion expressions render in both captions', async () => {
+    for (const [index, text, control] of [
+      [0, '100% READY: [yes], "it\'s" \\ OK!', '100 READY: [yes], "it\'s" \\ OK!'],
+      [1, '%{n}', '0']
+    ]) {
+      const bounds = [];
+      for (const [variant, caption] of [['literal', text], ['control', control]]) {
+        const job = await f.job('meme-editor', { input:f.input, format:'mp4', output:`punctuation-${index}-${variant}`,
+          topText:caption, bottomText:caption, topX:'40', topY:'40', bottomX:'40', bottomY:'400', fontSize:'40', width:'1280' });
+        const output = path.join(f.root, job.outputPath);
+        assert.equal(probeVideo(output).codec_name, 'h264');
+        execFileSync('ffmpeg', ['-v','error','-xerror','-i',output,'-f','null','-']);
+        const lines = [];
+        for (const [line, y] of [['top', 0], ['bottom', 360]]) {
+          const image = path.join(f.root, `${index}-${variant}-${line}.png`);
+          execFileSync('ffmpeg', ['-v','error','-i',output,'-vf',`crop=1280:360:0:${y}`,'-frames:v','1','-update','1',image]);
+          const pixels = brightBounds(image, 1280);
+          assert.ok(pixels.count > 100 && pixels.minY >= 38 && pixels.maxY < 100, `${line}: ${JSON.stringify(pixels)}`);
+          lines.push(pixels);
+        }
+        bounds.push(lines);
+      }
+      for (let line = 0; line < 2; line++) {
+        assert.ok(bounds[0][line].maxX > bounds[1][line].maxX + 15, 'literal percent/expression glyphs must remain visible, not disappear or expand');
+        assert.ok(bounds[0][line].count > bounds[1][line].count + 100);
+      }
+    }
+  });
+  await t.test('display rotation uses the same coordinates for metadata, previews, crops and exports', async t => {
+    for (const rotation of [0, 90, 180, 270]) await t.test(`${rotation} degree display rotation`, async () => {
+      const input = rotatedFixture(f.root, rotation);
+      const [width, height] = rotation % 180 ? [720,1280] : [1280,720];
+      const metadata = await f.post('/api/source-info', {source:input});
+      assert.deepEqual([metadata.width, metadata.height], [width,height]);
+      const preview = await f.post('/api/preview-frame', {input});
+      const previewPath = path.join(f.root, preview.path);
+      const previewStream = probeVideo(previewPath);
+      assert.deepEqual([previewStream.width, previewStream.height], [width,height]);
+      const [markerX, markerY, markerW, markerH] = {
+        0:[100,50,200,100], 90:[50,980,100,200], 180:[980,570,200,100], 270:[570,100,100,200]
+      }[rotation];
+      const expected = brightBounds(previewPath, width);
+      assert.ok(Math.abs(expected.minX-markerX)<2 && Math.abs(expected.minY-markerY)<2, JSON.stringify(expected));
+      assert.ok(Math.abs(expected.maxX-(markerX+markerW-1))<2 && Math.abs(expected.maxY-(markerY+markerH-1))<2);
+      for (const crop of [{x:0,y:0,w:width,h:height}, {x:40,y:20,w:width-80,h:height-40}]) {
+        const job = await f.job('meme-editor', {input, format:'mp4', output:`rotation-${rotation}-${crop.x}`,
+          cropX:String(crop.x), cropY:String(crop.y), cropWidth:String(crop.w), cropHeight:String(crop.h), width:String(crop.w/2)});
+        const output = path.join(f.root, job.outputPath);
+        const stream = probeVideo(output);
+        assert.deepEqual([stream.width, stream.height], [crop.w/2,crop.h/2]);
+        assert.ok(!stream.side_data_list?.some(data => data.rotation), 'export must not rotate a second time');
+        execFileSync('ffmpeg', ['-v','error','-xerror','-i',output,'-f','null','-']);
+        const actual = brightBounds(output, crop.w/2);
+        assert.ok(Math.abs(actual.minX-(markerX-crop.x)/2)<2 && Math.abs(actual.minY-(markerY-crop.y)/2)<2, JSON.stringify(actual));
+        assert.ok(actual.count > markerW*markerH/5);
+      }
+      for (const crop of [{cropX:'1',cropY:'0',cropWidth:String(width),cropHeight:String(height)},
+        {cropX:'0',cropY:'1',cropWidth:String(width),cropHeight:String(height)},
+        ...(rotation % 180 ? [{cropX:'0',cropY:'0',cropWidth:'1280',cropHeight:'720'}] : [])]) {
+        await assert.rejects(f.post('/api/jobs', {action:'meme-editor', fields:{input,...crop}}), /Crop area/);
+      }
+    });
+  });
   await t.test('large remote metadata keeps format fallbacks without fragment lists', async () => {
     const info = await f.post('/api/source-info', { source:'https://example.test/large-metadata' });
     assert.equal(info.title, 'Remote "quoted" fixture — ✓');

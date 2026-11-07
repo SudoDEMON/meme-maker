@@ -102,4 +102,23 @@ function brightBounds(filename, width) {
   }
   return {minX,minY,maxX,maxY,count};
 }
-module.exports = {fixture,waitFor,brightBounds};
+function probeVideo(filename) {
+  return JSON.parse(execFileSync('ffprobe', ['-v','error','-select_streams','v:0','-show_streams','-of','json',filename])).streams[0];
+}
+function rotatedFixture(root, rotation) {
+  const encoded = path.join(root, 'rotation-source.mp4');
+  if (!fs.existsSync(encoded)) execFileSync('ffmpeg', ['-v','error','-f','lavfi','-i',
+    'color=black:s=1280x720:r=10:d=0.5,drawbox=x=100:y=50:w=200:h=100:color=white:t=fill',
+    '-c:v','libx264','-pix_fmt','yuv420p',encoded]);
+  const output = path.join(root, `rotation-${rotation}.mp4`);
+  // Input override plus stream copy writes a real display matrix (a rotate tag
+  // alone is ignored by some FFmpeg versions). Always verify the fixture.
+  execFileSync('ffmpeg', ['-v','error','-display_rotation:v:0',String(rotation),'-i',encoded,'-c','copy',output]);
+  const stream = probeVideo(output);
+  const actual = stream.side_data_list?.find(data => data.rotation !== undefined)?.rotation || 0;
+  if (((actual % 360) + 360) % 360 !== rotation || stream.width !== 1280 || stream.height !== 720) {
+    throw new Error(`Invalid rotation fixture: ${JSON.stringify(stream)}`);
+  }
+  return output;
+}
+module.exports = {fixture,waitFor,brightBounds,probeVideo,rotatedFixture};

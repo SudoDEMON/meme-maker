@@ -357,6 +357,8 @@ function parseCropFields(fields, metadata = {}) {
     throw new Error('Crop width and height must be greater than zero.');
   }
 
+  // sourceInfo supplies display dimensions, after FFmpeg's autorotation, just
+  // like the preview and the crop/caption filters. Do not use encoded streams here.
   const sourceWidth = Number(metadata.width) || 0;
   const sourceHeight = Number(metadata.height) || 0;
   if (sourceWidth > 0 && sourceHeight > 0) {

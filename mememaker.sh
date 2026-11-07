@@ -300,7 +300,7 @@ build_caption_filter() {
     top_font="$(resolve_caption_font_for "$font_arg" "$top_family" "$top_bold" "$top_italic")"
     info "Using top font: $top_font" >&2
     txt="$(write_drawtext_file "$top")"
-    filter="drawtext=fontfile=$top_font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$top_size:x=$TOP_X:y=$TOP_Y"
+    filter="drawtext=fontfile=$top_font:textfile=$txt:expansion=none:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$top_size:x=$TOP_X:y=$TOP_Y"
     filter="$(append_text_decoration "$filter" "$top" "$TOP_X" "$TOP_Y" "$top_size")"
   fi
 
@@ -316,7 +316,7 @@ build_caption_filter() {
     if [[ -n "$filter" ]]; then
       filter+=","
     fi
-    filter+="drawtext=fontfile=$bottom_font:textfile=$txt:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$bottom_size:x=$BOTTOM_X:y=$bottom_y_expr"
+    filter+="drawtext=fontfile=$bottom_font:textfile=$txt:expansion=none:fontcolor=white:borderw=$STROKE:bordercolor=black@1:fontsize=$bottom_size:x=$BOTTOM_X:y=$bottom_y_expr"
     filter="$(append_text_decoration "$filter" "$bottom" "$BOTTOM_X" "$bottom_y_expr" "$bottom_size")"
   fi
 

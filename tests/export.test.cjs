@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const puppeteer = require('puppeteer');
-const { fixture, brightBounds } = require('./helpers.cjs');
+const { fixture, brightBounds, probeVideo, rotatedFixture } = require('./helpers.cjs');
 
 async function fill(page, selector, value) {
   await page.$eval(selector, (element, text) => {
@@ -17,6 +17,60 @@ async function fill(page, selector, value) {
 function probe(file) {
   return JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', file]));
 }
+
+test('rotated browser preview exports full-frame and cropped captions in display coordinates', {skip:process.platform === 'win32'}, async t => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const input = rotatedFixture(f.root, 90);
+  const browser = await puppeteer.launch({headless:true,args:['--no-sandbox']});
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(f.url);
+  await fill(page, '#sourceInput', input);
+  await page.click('#addSourceForm button');
+  await page.click('[data-section="editor"]');
+  await page.waitForFunction(() => document.querySelector('#previewStatus').textContent === 'Preview ready.');
+  assert.deepEqual(await page.$eval('#editorPreview', el => [el.naturalWidth,el.naturalHeight]), [720,1280]);
+  await page.waitForFunction(() => document.querySelector('#editorVideo').readyState >= 1);
+  assert.deepEqual(await page.$eval('#editorVideo', el => [el.videoWidth,el.videoHeight]), [720,1280]);
+  assert.equal(await page.$eval('#cropSummary', el => el.textContent), '720 × 1280');
+  await fill(page, '#editorForm [name="width"]', '360');
+  await fill(page, '#editorForm [name="topText"]', '100% READY');
+  await fill(page, '#editorForm [name="bottomText"]', '%{n} stays literal');
+  await page.click('[data-editor-action="classic"]');
+  for (const cropped of [false,true]) {
+    if (cropped) {
+      await page.focus('[data-crop="s"]');
+      await page.keyboard.press('ArrowUp');
+      assert.equal(await page.$eval('#cropSummary', el => el.textContent), '720 × 1278');
+    }
+    const name = cropped ? 'portrait-cropped' : 'portrait-full';
+    await fill(page, '#editorForm [name="output"]', name);
+    await page.click('#editorForm [data-run]');
+    await page.waitForFunction(name => document.querySelector('#resultTitle').textContent === 'Ready to save' && document.querySelector('#jobMessage').textContent === `${name}.mp4`, {}, name);
+    const output = path.join(f.root, `videos/${name}.mp4`);
+    const stream = probeVideo(output);
+    assert.deepEqual([stream.width,stream.height], [360,640]);
+    assert.ok(!stream.side_data_list?.some(data => data.rotation));
+    execFileSync('ffmpeg', ['-v','error','-xerror','-i',output,'-f','null','-']);
+    for (const [line,y] of [['top',0],['bottom',570]]) {
+      const frame = path.join(f.root, `${name}-${line}.png`);
+      // Exclude the fixture's left-edge orientation marker from caption bounds.
+      execFileSync('ffmpeg', ['-v','error','-i',output,'-vf',`crop=210:70:76:${y}`,'-frames:v','1','-update','1',frame]);
+      const bounds = brightBounds(frame,210);
+      assert.ok(bounds.count > 100, `${line} caption is visible`);
+      assert.ok(Math.abs((bounds.minX+bounds.maxX)/2+76-180)<8, `${line}: ${JSON.stringify(bounds)}`);
+    }
+    if (process.env.MM_TEST_EVIDENCE_DIR) {
+      fs.mkdirSync(process.env.MM_TEST_EVIDENCE_DIR,{recursive:true});
+      fs.copyFileSync(output,path.join(process.env.MM_TEST_EVIDENCE_DIR,`${name}.mp4`));
+      await page.screenshot({path:path.join(process.env.MM_TEST_EVIDENCE_DIR,`${name}.png`),fullPage:true});
+    }
+  }
+  assert.deepEqual(errors, []);
+});
 
 test('WebM export accepts fractional preview times and blank trim boundaries', { skip: process.platform === 'win32' }, async t => {
   const f = await fixture({ fps: 30, duration: 2.1 });

@@ -13,6 +13,146 @@ async function fill(page, selector, value) {
   },value);
 }
 
+async function libraryFixture(t, count = 2) {
+  const f = await fixture();
+  t.after(() => f.close());
+  const browser = await puppeteer.launch({headless:true,args:['--no-sandbox']});
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(f.url);
+  for (const name of ['A.mp4','B.mp4','C.mp4'].slice(0,count)) {
+    const input = path.join(f.root,name);
+    fs.copyFileSync(f.input,input);
+    await fill(page,'#sourceInput',input);
+    await page.click('#addSourceForm button');
+  }
+  await page.waitForFunction(() => [...document.querySelectorAll('.asset-select small')].every(el => el.textContent.includes('1280')));
+  return {f,page};
+}
+const assetControl = (name, control = 'input') => `.asset-card:has(strong[title="${name}"]) ${control}`;
+const selectedNames = page => page.$$eval('.asset-select input:checked', els => els.map(el => el.nextElementSibling.querySelector('strong').textContent));
+const integrationOptions = {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false};
+const combinedNames = page => page.$$eval('.source-summary li', els => els.map(el => el.textContent));
+
+test('editor source agrees across Edit, radio, dropdown and section switches', integrationOptions, async t => {
+  const {page} = await libraryFixture(t);
+  const assertEditor = async name => {
+    assert.equal(await page.$eval('#editorSource', el => el.selectedOptions[0].textContent), name);
+    assert.deepEqual(await selectedNames(page), [name]);
+    assert.deepEqual(await page.$$eval('.asset-card.selected strong', els => els.map(el => el.textContent)), [name]);
+  };
+  assert.deepEqual(await selectedNames(page), ['B.mp4']);
+  await page.click(assetControl('A.mp4', '[data-edit]'));
+  await assertEditor('A.mp4');
+  await page.click(assetControl('B.mp4'));
+  await assertEditor('B.mp4');
+  const a = await page.$eval(assetControl('A.mp4'), el => el.value);
+  const b = await page.$eval(assetControl('B.mp4'), el => el.value);
+  await page.select('#editorSource', a);
+  await assertEditor('A.mp4');
+  assert.equal(await page.$eval('#editorSource', el => el === document.activeElement), true);
+  await page.click('[data-section="media"]');
+  assert.deepEqual(await selectedNames(page), ['B.mp4']);
+  await page.click('[data-operation="combine"]');
+  await page.click(assetControl('A.mp4'));
+  await page.click('[aria-label="Move A.mp4 earlier"]');
+  assert.deepEqual(await combinedNames(page), ['A.mp4','B.mp4']);
+  await page.click('[data-section="editor"]');
+  await assertEditor('A.mp4');
+  await page.select('#editorSource', b);
+  await assertEditor('B.mp4');
+  await page.reload();
+  await page.waitForSelector('#editorSource');
+  await assertEditor('B.mp4');
+  await page.click('[data-section="media"]');
+  assert.deepEqual(await combinedNames(page), ['A.mp4','B.mp4']);
+});
+
+test('library keyboard focus survives consecutive selection and reordering at boundaries', integrationOptions, async t => {
+  const {page} = await libraryFixture(t,3);
+  const assertFocus = async selector => assert.equal(await page.$eval(selector, el => el === document.activeElement), true, `focus: ${selector}`);
+  await page.click('[data-operation="combine"]');
+  await page.focus(assetControl('A.mp4'));
+  for (const expected of [['C.mp4','A.mp4'],['C.mp4'],['C.mp4','A.mp4']]) {
+    await page.keyboard.press('Space');
+    await assertFocus(assetControl('A.mp4'));
+    assert.deepEqual(await combinedNames(page), expected);
+  }
+  await page.focus(assetControl('B.mp4'));
+  await page.keyboard.press('Space');
+  await assertFocus(assetControl('B.mp4'));
+  await page.focus('[aria-label="Move B.mp4 earlier"]');
+  for (const [key, order, direction] of [
+    ['Enter',['C.mp4','B.mp4','A.mp4'],'earlier'],
+    ['Enter',['B.mp4','C.mp4','A.mp4'],'later'],
+    ['Space',['C.mp4','B.mp4','A.mp4'],'later'],
+    ['Space',['C.mp4','A.mp4','B.mp4'],'earlier'],
+    ['Enter',['C.mp4','B.mp4','A.mp4'],'earlier']
+  ]) {
+    await page.keyboard.press(key);
+    assert.deepEqual(await combinedNames(page), order);
+    await assertFocus(`[aria-label="Move B.mp4 ${direction}"]`);
+  }
+  await page.click(assetControl('A.mp4','[data-edit]'));
+  await assertFocus(assetControl('A.mp4','[data-edit]'));
+  await page.focus(assetControl('B.mp4'));
+  await page.keyboard.press('Space');
+  await assertFocus(assetControl('B.mp4'));
+  await page.keyboard.press('ArrowLeft');
+  await assertFocus(assetControl('A.mp4'));
+  assert.deepEqual(await selectedNames(page), ['A.mp4']);
+  await page.keyboard.press('ArrowRight');
+  await assertFocus(assetControl('B.mp4'));
+  assert.deepEqual(await selectedNames(page), ['B.mp4']);
+  await page.focus(assetControl('B.mp4','[data-remove]'));
+  await page.keyboard.press('Enter');
+  await assertFocus(assetControl('C.mp4','[data-remove]'));
+  await page.keyboard.press('Enter');
+  await assertFocus(assetControl('A.mp4','[data-remove]'));
+  await page.keyboard.press('Enter');
+  await assertFocus('#sourceInput');
+});
+
+test('populated caption controls remain readable at mobile, tablet and desktop widths', integrationOptions, async t => {
+  const {page} = await libraryFixture(t);
+  await page.click(assetControl('A.mp4','[data-edit]'));
+  await page.waitForFunction(() => document.querySelector('#previewStatus').textContent === 'Preview ready.');
+  await fill(page,'[name="topText"]','100% READY');
+  await fill(page,'[name="bottomText"]','Literal punctuation: [yes]!');
+  for (const width of [320,390,768,1440]) {
+    await page.setViewport({width,height:900});
+    await fill(page,'[name="fontSize"]','1000');
+    const layout = await page.evaluate(() => {
+      const input = document.querySelector('[name="fontSize"]');
+      const font = document.querySelector('[name="fontFamily"]');
+      const metrics = el => {
+        const css = getComputedStyle(el);
+        const canvas = document.createElement('canvas').getContext('2d');
+        canvas.font = css.font;
+        const value = el.value;
+        const text = el.tagName === 'SELECT' ? el.selectedOptions[0].textContent : value;
+        const rect = el.getBoundingClientRect();
+        return {value,width:rect.width,available:el.clientWidth-parseFloat(css.paddingLeft)-parseFloat(css.paddingRight)-20,
+          needed:canvas.measureText(text).width,left:rect.left,right:rect.right};
+      };
+      return {overflow:document.documentElement.scrollWidth > innerWidth,size:metrics(input),font:metrics(font)};
+    });
+    assert.equal(layout.overflow, false, `${width}px: page overflow`);
+    assert.equal(layout.size.value, '1000');
+    for (const control of [layout.size,layout.font]) {
+      assert.ok(control.width >= 80 && control.available >= control.needed, `${width}px: unreadable control ${JSON.stringify(control)}`);
+      assert.ok(control.left >= 0 && control.right <= width);
+    }
+    if (process.env.MM_TEST_EVIDENCE_DIR) {
+      fs.mkdirSync(process.env.MM_TEST_EVIDENCE_DIR,{recursive:true});
+      await page.$eval('.editor-controls', el => el.scrollIntoView({block:'center'}));
+      await page.screenshot({path:path.join(process.env.MM_TEST_EVIDENCE_DIR,`caption-controls-${width}.png`)});
+      await fill(page,'[name="fontSize"]','50');
+      await page.screenshot({path:path.join(process.env.MM_TEST_EVIDENCE_DIR,`editor-${width}.png`),fullPage:true});
+    }
+  }
+});
+
 test('plain HTTP supports links, uploads, completed outputs, and restored library IDs', {skip:process.platform === 'win32' ? 'Integration fixtures require Unix-native Node.' : false}, async t => {
   const f=await fixture();
   t.after(()=>f.close());

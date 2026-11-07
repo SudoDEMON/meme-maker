@@ -48,13 +48,18 @@ function positiveNumber(...values) {
 
 function mediaFrameInfo(streams, duration) {
   const video = (Array.isArray(streams) ? streams : []).find(stream => stream.codec_type === 'video') || {};
+  const rotation = Number(video.side_data_list?.find(data => data.rotation !== undefined)?.rotation ?? video.tags?.rotate) || 0;
+  const angle = ((rotation % 360) + 360) % 360;
+  // FFmpeg autorotates before preview/render filters. Quarter turns transpose
+  // the frame; other rotations retain its dimensions. Match its 1-degree tolerance.
+  const transpose = Math.abs(angle - 90) < 1 || Math.abs(angle - 270) < 1;
   const fps = parseFrameRate(video.avg_frame_rate) || parseFrameRate(video.r_frame_rate);
   const exactFrames = Number(video.nb_frames);
   const estimatedFrames = Number.isFinite(duration) && fps ? Math.round(duration * fps) : null;
   const frameCount = Number.isFinite(exactFrames) && exactFrames > 0 ? exactFrames : estimatedFrames;
   return {
-    width: Number(video.width) || null,
-    height: Number(video.height) || null,
+    width: Number(transpose ? video.height : video.width) || null,
+    height: Number(transpose ? video.width : video.height) || null,
     fps,
     frameCount: Number.isFinite(frameCount) && frameCount > 0 ? frameCount : null
   };
@@ -102,7 +107,7 @@ async function inspectSource(value) {
   if (fs.existsSync(resolved)) {
     const { stdout } = await runCapture('ffprobe', [
       '-v', 'error',
-      '-show_entries', 'format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,nb_frames',
+      '-show_entries', 'format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,nb_frames:stream_side_data=rotation:stream_tags=rotate',
       '-of', 'json',
       resolved
     ]);
